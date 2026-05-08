@@ -1,0 +1,1 @@
+This is a regular monthly release (CalVer month-line bump). Lead with what's been added or improved this month. Don't make breaking-change claims unless the diff actually shows them — CalVer doesn't promise stability across month boundaries, but most month-releases are still additive.

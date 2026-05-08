@@ -1,0 +1,131 @@
+name: chronikl
+description: AI-powered release notes generator — run chronikl in your release workflow
+author: chronikl
+
+branding:
+  icon: file-text
+  color: blue
+
+inputs:
+  version:
+    description: "chronikl version to use (e.g. 'v0.1.0', 'latest')"
+    required: false
+    default: latest
+  args:
+    description: "Custom args for chronikl (overrides the default flag set when non-empty)"
+    required: false
+    default: ""
+  from:
+    description: "Lower-bound git ref (default: previous semver tag, resolved automatically)"
+    required: false
+    default: ""
+  to:
+    description: "Upper-bound git ref (default: HEAD)"
+    required: false
+    default: ""
+  since_last_tag:
+    description: "Use the latest semver tag as the lower bound, even when HEAD is itself tagged"
+    required: false
+    default: "false"
+  voice:
+    description: "Path to a voice markdown file (overrides the bundled default)"
+    required: false
+    default: ""
+  prompt:
+    description: "One-shot system-prompt addendum"
+    required: false
+    default: ""
+  output:
+    description: "Write the rendered release notes to this path (default: stdout)"
+    required: false
+    default: ""
+  agent:
+    description: "Enable Tier 3 agentic fallback"
+    required: false
+    default: "false"
+  audit_log:
+    description: "Path to write a JSON audit log of every LLM call"
+    required: false
+    default: ""
+
+# ⚠ Security: provider API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.) must
+#   be passed via GitHub Secrets — never hardcode them in workflow files.
+#   See: https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions
+
+runs:
+  using: composite
+  steps:
+    - name: Install chronikl
+      shell: bash
+      run: |
+        set -euo pipefail
+        VERSION="${{ inputs.version }}"
+        REPO="nsrosenqvist/chronikl"
+        if [ "$VERSION" = "latest" ]; then
+          DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/chronikl-x86_64-unknown-linux-gnu.tar.gz"
+        else
+          DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/chronikl-x86_64-unknown-linux-gnu.tar.gz"
+        fi
+        curl -sSfL "$DOWNLOAD_URL" | tar xz -C /usr/local/bin
+        chmod +x /usr/local/bin/chronikl
+
+    - name: Run chronikl
+      shell: bash
+      run: |
+        set -euo pipefail
+        ARGS="${{ inputs.args }}"
+        if [ -n "$ARGS" ]; then
+          chronikl $ARGS
+          exit $?
+        fi
+
+        CMD="chronikl"
+
+        if [ -n "${{ inputs.from }}" ]; then
+          CMD="$CMD --from ${{ inputs.from }}"
+        fi
+        if [ -n "${{ inputs.to }}" ]; then
+          CMD="$CMD --to ${{ inputs.to }}"
+        fi
+        if [ "${{ inputs.since_last_tag }}" = "true" ]; then
+          CMD="$CMD --since-last-tag"
+        fi
+        if [ -n "${{ inputs.voice }}" ]; then
+          CMD="$CMD --voice ${{ inputs.voice }}"
+        fi
+        if [ -n "${{ inputs.prompt }}" ]; then
+          CMD="$CMD --prompt \"${{ inputs.prompt }}\""
+        fi
+        if [ -n "${{ inputs.output }}" ]; then
+          CMD="$CMD --output ${{ inputs.output }}"
+        fi
+        if [ "${{ inputs.agent }}" = "true" ]; then
+          CMD="$CMD --agent"
+        fi
+        if [ -n "${{ inputs.audit_log }}" ]; then
+          CMD="$CMD --audit-log ${{ inputs.audit_log }}"
+        fi
+
+        echo "::group::chronikl"
+        EXIT_CODE=0
+        eval $CMD || EXIT_CODE=$?
+        echo "::endgroup::"
+
+        if [ "$EXIT_CODE" -ne 0 ]; then
+          {
+            echo "## :x: chronikl failed"
+            echo ""
+            echo "chronikl exited with code **${EXIT_CODE}**. Check the workflow logs for details."
+            echo ""
+            echo "| Setting | Value |"
+            echo "|---|---|"
+            echo "| Provider | \`${CHRONIKL_PROVIDER:-not set}\` |"
+            echo "| Model    | \`${CHRONIKL_MODEL:-not set}\` |"
+            echo ""
+            echo "Common causes:"
+            echo "- LLM provider returned an error (invalid API key, rate limit, model not found)"
+            echo "- Range resolution failed (no prior tag matching \`v*.*.*\` and no \`from\` provided)"
+            echo "- Network failure during PR enrichment or the prose pass"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$EXIT_CODE"
+        fi

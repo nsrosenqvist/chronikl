@@ -1,0 +1,1 @@
+This is a year-line release (CalVer year-line bump). Treat it as a milestone — frame entries around the larger changes since the last year-line. Note that CalVer year changes don't strictly imply breaking changes; if the diff shows breaking changes, surface them prominently, otherwise just frame the release as the start of a new annual cadence.

@@ -1,0 +1,109 @@
+[workspace]
+# Standalone — declared explicitly so cargo doesn't try to attach this
+# package to a parent workspace when scaffolded under tmp/ in another
+# repository.
+
+[package]
+name = "chronikl"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "AI-powered release notes generator"
+license = "BUSL-1.1"
+repository = "https://github.com/nsrosenqvist/chronikl"
+homepage = "https://chronikl.dev"
+readme = "README.md"
+keywords = ["release-notes", "changelog", "ai", "llm", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Async
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+## HTTP
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# Pin minimum patch level of transitive dep (via reqwest/rustls) to ensure
+# the fix for GHSA-82j2-j2ch-gfr8 (panic in BorrowedCertRevocationList::from_der)
+# is always picked up by cargo's resolver. Not used directly.
+rustls-webpki = "0.103.13"
+# Direct dep so we can explicitly install the aws-lc-rs crypto provider
+# at startup. Some transitive consumers (octocrab 0.46) leave the
+# CryptoProvider unset at the rustls 0.23 layer, which panics on first
+# TLS use. Using `install_default()` once at process start fixes that.
+rustls = { version = "0.23", features = ["aws_lc_rs"] }
+
+# GitHub API client
+octocrab = "0.46"
+
+# LLM (multi-provider support)
+rig-core = { version = "0.35", features = ["derive"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Async trait
+async-trait = "0.1"
+
+# Regex
+regex = "1"
+
+# Terminal output
+colored = "3"
+terminal_size = "0.4"
+
+# Hashing (cache keys, release-asset checksum verification)
+sha2 = "0.10"
+hex = "0.4"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+
+# License key verification (Ed25519 offline signing)
+ed25519-dalek = { version = "2", features = ["std", "rand_core"] }
+base64 = "0.22"
+
+# Ordered maps
+indexmap = { version = "2", features = ["serde"] }
+
+# Enum utilities
+strum = { version = "0.27", features = ["derive"] }
+
+# Archive extraction (self-update)
+flate2 = "1"
+tar = "0.4"
+
+# Misc
+dirs = "6"
+uuid = { version = "1", features = ["v4"] }
+schemars = "1"
+semver = "1"
+globset = "0.4.18"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+futures = "0.3"
+
+[dev-dependencies]
+tempfile = "3"
+pretty_assertions = "1"
+rand_core = { version = "0.6", features = ["getrandom"] }
+serial_test = "3"
+tokio = { version = "1", features = ["full", "test-util"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[[example]]
+name = "keygen"
+path = "tools/keygen.rs"
+
+[[example]]
+name = "issue_license"
+path = "tools/issue_license.rs"

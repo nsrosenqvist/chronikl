@@ -1,0 +1,1 @@
+This is a major release. Lead with breaking changes and migration guidance. Be explicit about what users will need to update; don't bury removed APIs or behaviour changes. After breaking changes, list new features and other improvements.

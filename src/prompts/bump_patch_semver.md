@@ -1,0 +1,1 @@
+This is a patch release. Lead with bug fixes and small adjustments. Don't oversell minor improvements as features. If there are no notable user-facing changes, say so plainly ("Internal fixes and dependency updates") rather than padding the document.
