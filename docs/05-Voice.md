@@ -1,19 +1,46 @@
 # Voice
 
-The "voice" is the system prompt that drives chronikl's prose pass. By default chronikl uses a bundled voice — concise, factual, professional. To change tone, supply your own Markdown file.
+The "voice" is the system prompt that drives chronikl's prose pass. chronikl ships **two bundled voice profiles** and accepts your own Markdown file when you want full control.
 
 ---
 
-## Default behaviour
+## Bundled profiles
 
-With no voice configured, chronikl uses an embedded default that produces:
+| Profile | Use when… |
+|---|---|
+| `terse` *(default)* | You want compact one-line bullets, lead-with-verb, PR numbers in parens. The original chronikl style — fast to read, fits in a release email. |
+| `prose` | You want richer multi-sentence explanations: bold lead phrase + em-dash + 2–3 sentence body for marquee items. Pairs well with `--rich-context`. |
 
-- Concise, factual entries
-- One line per item, leading with a verb
-- PR numbers in parentheses where present
-- No author or date noise
+`default` is accepted as an alias for `terse`, so existing scripts that pass `--voice default` keep working.
 
-Plenty of releases need nothing more than this.
+```bash
+chronikl --voice terse        # explicit; same as the implicit default
+chronikl --voice prose        # richer notes
+chronikl --voice default      # alias → terse
+```
+
+Or persist via TOML:
+
+```toml
+[voice]
+profile = "prose"
+```
+
+## Rich context
+
+The prose pass normally sees only the commit subject, classification source, PR title, and PR labels per entry. With `--rich-context` (or `[voice].rich_context = true` in TOML), chronikl also embeds **truncated commit bodies (≤600 chars) and PR bodies (≤1000 chars)** under each entry. This is what lets the `prose` voice write rich, well-grounded explanations instead of paraphrasing the subject.
+
+```bash
+chronikl --voice prose --rich-context
+```
+
+```toml
+[voice]
+profile      = "prose"
+rich_context = true
+```
+
+The terse voice also accepts richer context but won't make much use of it — the extra material is mostly wasted tokens unless you're using a voice that asks for explanations. Off by default for that reason.
 
 ## Custom voice file
 
@@ -46,6 +73,10 @@ Or persist it via TOML:
 [voice]
 path = "release-voice.md"
 ```
+
+`--voice` accepts either a bundled profile name (`terse`, `prose`, `default`) or a file path. If the value matches a profile name it loads the bundled content; otherwise it's treated as a path. Pass `./prose` (with the leading `./`) if you ever need to load a file literally named `prose`.
+
+If both `[voice].path` and `[voice].profile` are set in TOML, `path` wins — bundled profiles are the easy default and the custom file is the more specific override.
 
 Validate the file is readable + non-empty:
 

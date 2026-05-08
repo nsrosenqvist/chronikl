@@ -49,6 +49,15 @@ pub fn build_system_prompt(
     out
 }
 
+/// Hard cap on commit-body characters under `rich_context`. Matches
+/// `tier1::BODY_PREVIEW_CHARS` so the prose pass and the classification
+/// ladder see comparable amounts of body text.
+const COMMIT_BODY_PREVIEW: usize = 600;
+
+/// Hard cap on PR-body characters under `rich_context`. Matches the
+/// `prompts::PR_BODY_PREVIEW` used by the classification ladder.
+const PR_BODY_PREVIEW: usize = 1000;
+
 /// Build the user prompt: a structured listing of the classified
 /// commits the model should turn into prose.
 ///
@@ -68,15 +77,7 @@ pub fn build_system_prompt(
 /// ## Features
 /// - Add login flow  [llm-batch, conf=0.8]
 /// ```
-/// Hard cap on commit-body characters under `rich_context`. Matches
-/// `tier1::BODY_PREVIEW_CHARS` so the prose pass and the classification
-/// ladder see comparable amounts of body text.
-const COMMIT_BODY_PREVIEW: usize = 600;
-
-/// Hard cap on PR-body characters under `rich_context`. Matches the
-/// `prompts::PR_BODY_PREVIEW` used by the classification ladder.
-const PR_BODY_PREVIEW: usize = 1000;
-
+#[allow(clippy::too_many_arguments)]
 pub fn build_user_prompt(
     classified: &Classified,
     from_ref: Option<&str>,
@@ -469,6 +470,7 @@ mod tests {
             &ReleaseKind::Stable,
             VersionBump::Patch,
             None,
+            false,
         );
         assert!(prompt.contains("v0.1.0..HEAD"));
         assert!(prompt.contains("squash"));
@@ -495,6 +497,7 @@ mod tests {
             },
             VersionBump::Major,
             None,
+            false,
         );
         assert!(prompt.contains("prerelease (rc.1)"));
         assert!(prompt.contains("Version bump: major"));
@@ -526,6 +529,7 @@ mod tests {
             &ReleaseKind::Untagged,
             VersionBump::Unknown,
             None,
+            false,
         );
         assert!(prompt.contains("(#42)"));
         assert!(prompt.contains("PR #42: Add SSO support"));
@@ -543,8 +547,124 @@ mod tests {
             &ReleaseKind::Stable,
             VersionBump::Patch,
             None,
+            false,
         );
         assert!(prompt.contains("No commits in range"));
+    }
+
+    #[test]
+    fn build_user_prompt_omits_bodies_when_rich_context_off() {
+        let mut e = entry(
+            "add login",
+            Section::Features,
+            ClassificationSource::BatchedLlm,
+        );
+        e.commit.body = "A meaningful commit body explaining the change.".into();
+        e.pr = Some(PrInfo {
+            number: 7,
+            title: "Add login".into(),
+            body: "PR description with rationale.".into(),
+            labels: vec![],
+            author: None,
+            merged_at: None,
+            url: None,
+        });
+        let classified = Classified(vec![e]);
+        let prompt = build_user_prompt(
+            &classified,
+            None,
+            "HEAD",
+            MergeStyle::Rebase,
+            &ReleaseKind::Untagged,
+            VersionBump::Unknown,
+            None,
+            false,
+        );
+        assert!(!prompt.contains("commit-body:"));
+        assert!(!prompt.contains("pr-body:"));
+        assert!(!prompt.contains("meaningful commit body"));
+    }
+
+    #[test]
+    fn build_user_prompt_includes_bodies_when_rich_context_on() {
+        let mut e = entry(
+            "add login",
+            Section::Features,
+            ClassificationSource::BatchedLlm,
+        );
+        e.commit.body = "A meaningful commit body explaining the change.".into();
+        e.pr = Some(PrInfo {
+            number: 7,
+            title: "Add login".into(),
+            body: "PR description with rationale.".into(),
+            labels: vec![],
+            author: None,
+            merged_at: None,
+            url: None,
+        });
+        let classified = Classified(vec![e]);
+        let prompt = build_user_prompt(
+            &classified,
+            None,
+            "HEAD",
+            MergeStyle::Rebase,
+            &ReleaseKind::Untagged,
+            VersionBump::Unknown,
+            None,
+            true,
+        );
+        assert!(prompt.contains("commit-body:"));
+        assert!(prompt.contains("A meaningful commit body explaining the change."));
+        assert!(prompt.contains("pr-body:"));
+        assert!(prompt.contains("PR description with rationale."));
+    }
+
+    #[test]
+    fn build_user_prompt_skips_empty_bodies_under_rich_context() {
+        // Body is empty; commit has no PR. Rich context should not emit
+        // dangling labels or trailing whitespace lines.
+        let e = entry("tweak", Section::Other, ClassificationSource::Default);
+        let classified = Classified(vec![e]);
+        let prompt = build_user_prompt(
+            &classified,
+            None,
+            "HEAD",
+            MergeStyle::Rebase,
+            &ReleaseKind::Untagged,
+            VersionBump::Unknown,
+            None,
+            true,
+        );
+        assert!(!prompt.contains("commit-body:"));
+        assert!(!prompt.contains("pr-body:"));
+    }
+
+    #[test]
+    fn build_user_prompt_truncates_long_bodies() {
+        let mut e = entry(
+            "epic change",
+            Section::Features,
+            ClassificationSource::BatchedLlm,
+        );
+        // 2× the commit-body cap (600) so we can verify truncation.
+        e.commit.body = "x".repeat(COMMIT_BODY_PREVIEW * 2);
+        let classified = Classified(vec![e]);
+        let prompt = build_user_prompt(
+            &classified,
+            None,
+            "HEAD",
+            MergeStyle::Rebase,
+            &ReleaseKind::Untagged,
+            VersionBump::Unknown,
+            None,
+            true,
+        );
+        // The body block exists, contains an ellipsis, and the prompt as
+        // a whole stays well below 2× the cap (i.e. truncation actually
+        // bit).
+        assert!(prompt.contains("commit-body:"));
+        assert!(prompt.contains("…"));
+        assert!(prompt.len() < COMMIT_BODY_PREVIEW * 2);
     }
 
     #[test]
@@ -558,6 +678,7 @@ mod tests {
             &ReleaseKind::Untagged,
             VersionBump::Unknown,
             None,
+            false,
         );
         assert!(prompt.contains("`HEAD`"));
         assert!(!prompt.contains(".."));

@@ -386,6 +386,7 @@ async fn prose_pass_writes_grouped_markdown() {
             version_scheme: None,
             from_ref: Some("v0.1.0"),
             to_ref: "HEAD",
+            rich_context: false,
         },
         &provider as &dyn NotesProvider,
         &audit,

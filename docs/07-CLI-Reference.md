@@ -36,7 +36,8 @@ chronikl --since-last-tag                   # latest tag → HEAD, even when HEA
 
 | Flag | Effect |
 |---|---|
-| `--voice <FILE>` | Path to a voice markdown file. Overrides `voice.path` in TOML. |
+| `--voice <NAME_OR_FILE>` | Bundled profile name (`terse`, `prose`, `default`) or path to a custom voice markdown file. Bundled-name match wins over treating it as a path. Overrides `voice.path` / `voice.profile` in TOML. |
+| `--rich-context` | Embed truncated commit bodies (≤600 chars) and PR bodies (≤1000 chars) in the prose-pass user prompt. Off by default; pairs well with `--voice prose`. Also `[voice].rich_context = true` in TOML. |
 | `--prompt <TEXT>` | One-shot system-prompt addendum. Applied last; always wins. |
 
 ### LLM behaviour flags
@@ -105,7 +106,7 @@ Diagnostic helpers. Output shapes are subject to change.
 | `chronikl debug merge-style [range...]` | Print the detected merge style (`squash`, `merge`, `rebase`, `mixed`). |
 | `chronikl debug config` | Print the resolved configuration. |
 | `chronikl debug classify [range...]` | Run Tier 0 deterministic classification, print JSON. |
-| `chronikl debug prompts [range...] [--voice FILE] [--prompt TEXT]` | Dump every LLM prompt that *would* be sent (Tier 1, Tier 2, Tier 3, prose pass) without calling the LLM. Honours the configured voice + addenda. |
+| `chronikl debug prompts [range...] [--voice NAME_OR_FILE] [--prompt TEXT] [--rich-context]` | Dump every LLM prompt that *would* be sent (Tier 1, Tier 2, Tier 3, prose pass) without calling the LLM. Honours the configured voice + addenda; mirrors `--rich-context` so the dumped prose prompt matches what `generate` would actually send. |
 
 ## Provider / model overrides
 

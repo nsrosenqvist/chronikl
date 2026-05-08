@@ -63,8 +63,9 @@ async fn run() -> anyhow::Result<()> {
             repo,
             voice,
             prompt,
+            rich_context,
             no_pr_enrichment,
-        })) => debug_prompts(range, repo, voice, prompt, no_pr_enrichment).await,
+        })) => debug_prompts(range, repo, voice, prompt, rich_context, no_pr_enrichment).await,
     }
 }
 
@@ -772,6 +773,7 @@ async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Option<Stri
         version_scheme,
         from_ref: range.from.as_deref(),
         to_ref: &range.to,
+        rich_context: args.rich_context || cfg.voice.rich_context,
     };
     match prose::run(request, provider.as_ref(), audit).await {
         Ok(md) => {
@@ -1024,6 +1026,7 @@ async fn debug_prompts(
             &release_kind,
             version_bump,
             version_scheme,
+            rich_context_arg || cfg.voice.rich_context,
         )
     );
     println!("```");

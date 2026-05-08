@@ -28,9 +28,13 @@ inputs:
     required: false
     default: "false"
   voice:
-    description: "Path to a voice markdown file (overrides the bundled default)"
+    description: "Bundled profile name (terse, prose, default) or path to a voice markdown file"
     required: false
     default: ""
+  rich_context:
+    description: "Embed truncated commit/PR bodies in the prose-pass user prompt; pairs well with voice=prose"
+    required: false
+    default: "false"
   prompt:
     description: "One-shot system-prompt addendum"
     required: false
@@ -92,6 +96,9 @@ runs:
         fi
         if [ -n "${{ inputs.voice }}" ]; then
           CMD="$CMD --voice ${{ inputs.voice }}"
+        fi
+        if [ "${{ inputs.rich_context }}" = "true" ]; then
+          CMD="$CMD --rich-context"
         fi
         if [ -n "${{ inputs.prompt }}" ]; then
           CMD="$CMD --prompt \"${{ inputs.prompt }}\""

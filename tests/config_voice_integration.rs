@@ -193,6 +193,32 @@ fn unknown_voice_profile_surfaces_clear_error() {
 }
 
 #[test]
+fn voice_rich_context_round_trips_through_toml() {
+    let repo = tempfile::tempdir().unwrap();
+    write(
+        &repo.path().join(CONFIG_FILENAME),
+        r#"
+[voice]
+profile = "prose"
+rich_context = true
+"#,
+    );
+
+    let env = Env::mock(Vec::<(&str, &str)>::new());
+    let cfg = Config::load(&env, repo.path(), None).unwrap();
+    assert!(cfg.voice.rich_context);
+    assert_eq!(cfg.voice.profile.as_deref(), Some("prose"));
+}
+
+#[test]
+fn voice_rich_context_defaults_to_false_when_unset() {
+    let repo = tempfile::tempdir().unwrap();
+    let env = Env::mock(Vec::<(&str, &str)>::new());
+    let cfg = Config::load(&env, repo.path(), None).unwrap();
+    assert!(!cfg.voice.rich_context);
+}
+
+#[test]
 fn cli_voice_name_overrides_toml_path() {
     let repo = tempfile::tempdir().unwrap();
     let voice_file = repo.path().join("custom.md");

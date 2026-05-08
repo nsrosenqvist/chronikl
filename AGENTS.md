@@ -47,6 +47,12 @@ the configured voice.
 
 ## Conventions
 
+### Git
+
+- Conventional commits
+- Imperative mood, <72 char subject line.
+- One logical change per commit.
+
 ### Error handling
 
 - Library code uses `thiserror` for typed error enums.

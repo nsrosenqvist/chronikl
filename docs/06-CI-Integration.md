@@ -54,7 +54,8 @@ jobs:
 | `from` | (auto) | Lower-bound ref |
 | `to` | (auto, usually `HEAD`) | Upper-bound ref |
 | `since_last_tag` | `false` | Use latest semver tag as `from` even when HEAD is itself tagged |
-| `voice` | (none) | Path to voice markdown file |
+| `voice` | (none) | Bundled profile name (`terse`, `prose`) or path to a voice markdown file |
+| `rich_context` | `false` | Embed truncated commit/PR bodies in the prose-pass user prompt — pairs well with `voice: prose` |
 | `prompt` | (none) | One-off system-prompt addendum |
 | `output` | (stdout) | Write notes to this path |
 | `agent` | `false` | Enable Tier 3 agentic fallback |

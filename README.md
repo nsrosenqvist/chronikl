@@ -24,7 +24,7 @@ $ chronikl --from v0.1.0 --to v0.2.0
 
 - **Cost-aware classification ladder.** Tier 0 (deterministic, no LLM) → Tier 1 (batched LLM) → Tier 2 (per-commit + diff) → Tier 3 (optional agentic). Most commits never reach an LLM. A 50-commit release typically uses a few thousand tokens.
 - **PR enrichment.** When run on a GitHub repo with a token, chronikl fetches PR titles, bodies, and labels and feeds them to the LLM — much better signal than raw commit messages.
-- **Voice control.** Pick a bundled profile (`--voice terse` for one-line bullets, `--voice prose` for richer multi-sentence entries) or point at your own plain-Markdown voice file. `--prompt "..."` for one-off tweaks.
+- **Voice control.** Pick a bundled profile (`--voice terse` for one-line bullets, `--voice prose` for richer multi-sentence entries) or point at your own plain-Markdown voice file. Add `--rich-context` to feed commit + PR bodies to the prose pass; `--prompt "..."` for one-off tweaks.
 - **Release-context aware.** Detects prerelease vs. stable, semver vs. CalVer, and the bump kind (major/minor/patch). Prose adjusts tone — major releases lead with breaking changes, patches lead with fixes, etc.
 - **Veritrail-style audit log.** Optional `--audit-log` writes a full JSON record of every LLM call (model, tokens, prompt + response hashes, tool calls). Lets you answer "why did chronikl say that?" months later.
 - **19 LLM providers.** Anthropic, OpenAI, Gemini, Cohere, DeepSeek, xAI, Groq, Perplexity, HuggingFace, Mistral, Moonshot, Ollama, Azure, OpenRouter, Together, and any OpenAI-compatible endpoint.

@@ -24,8 +24,15 @@ model = "claude-sonnet-4-6"
 # base_url = "..."   # only for openai-compatible / azure / ollama
 
 [voice]
-# path = "release-voice.md"
+# Pick a bundled profile (`terse` is the default; `prose` for rich
+# multi-sentence entries) OR point at a custom Markdown file.
+# `path` wins over `profile` if both are set.
+profile      = "terse"
+# path       = "release-voice.md"
 extra_instructions = "Mention the release manager's name."
+# Embed truncated commit/PR bodies in the prose-pass user prompt.
+# Off by default; turn on when using a richer voice.
+rich_context = false
 
 [ladder]
 agent_fallback        = false
