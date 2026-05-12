@@ -20,3 +20,10 @@ jobs:
         with:
           path: docs/
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify chronikl-web of wiki update
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CHRONIKL_WEB_DISPATCH_TOKEN }}
+          repository: nsrosenqvist/chronikl-web
+          event-type: wiki-updated
