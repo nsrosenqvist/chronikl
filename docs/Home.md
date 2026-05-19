@@ -1,4 +1,4 @@
-# chronikl Documentation
+# chronikl
 
 AI-powered release notes for your team. Bring your own model, bring your own API key. Designed to run inside your release workflow.
 
