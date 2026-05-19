@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0    # required so chronikl can see all tags
 
       - name: Generate release notes
-        uses: nsrosenqvist/chronikl@v0
+        uses: nsrosenqvist/chronikl@v1
         with:
           output: release_notes.md
         env:
@@ -66,7 +66,7 @@ jobs:
 If the inputs above don't cover what you need, drop down to raw args:
 
 ```yaml
-      - uses: nsrosenqvist/chronikl@v0
+      - uses: nsrosenqvist/chronikl@v1
         with:
           args: --from v1.0.0 --to v2.0.0 --voice docs/voice.md --output notes.md
         env:
@@ -101,7 +101,7 @@ The action only ships the binary; the LLM call itself happens from the runner. I
 For provenance / debugging, capture a per-run audit log:
 
 ```yaml
-      - uses: nsrosenqvist/chronikl@v0
+      - uses: nsrosenqvist/chronikl@v1
         with:
           output: release_notes.md
           audit_log: release_audit.json

@@ -68,7 +68,7 @@ jobs:
       - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
 
-      - uses: nsrosenqvist/chronikl@v0
+      - uses: nsrosenqvist/chronikl@v1
         with:
           output: release_notes.md
         env:
