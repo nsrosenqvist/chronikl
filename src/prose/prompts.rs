@@ -838,7 +838,11 @@ mod tests {
         );
         assert!(!prompt.contains("Project context:"));
         // The range opener should still be the first line.
-        assert!(prompt.trim_start().starts_with("Generate release notes for the range"));
+        assert!(
+            prompt
+                .trim_start()
+                .starts_with("Generate release notes for the range")
+        );
     }
 
     #[test]
