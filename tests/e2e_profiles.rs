@@ -26,6 +26,7 @@ use chronikl::config::ProviderConfig;
 use chronikl::git::{self, RangeSpec};
 use chronikl::ladder::{tier0, tier1, tier2, tier3};
 use chronikl::models::{MergeStyle, ReleaseKind, Section, VersionBump};
+use chronikl::project::ProjectContext;
 use chronikl::prose::{self, ProseRequest};
 use chronikl::providers::NotesProvider;
 use chronikl::providers::rig::RigProvider;
@@ -387,6 +388,7 @@ async fn prose_pass_writes_grouped_markdown() {
             from_ref: Some("v0.1.0"),
             to_ref: "HEAD",
             rich_context: false,
+            project_context: &ProjectContext::default(),
         },
         &provider as &dyn NotesProvider,
         &audit,

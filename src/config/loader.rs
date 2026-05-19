@@ -52,6 +52,26 @@ pub struct Config {
     pub telemetry: TelemetryConfig,
     #[serde(default)]
     pub license: LicenseConfig,
+    #[serde(default)]
+    pub project: ProjectConfig,
+}
+
+/// Project-level metadata folded into the prose-pass user prompt so the
+/// model has a "what this project is" signal. Defaults to auto-detection
+/// from the repo's language manifest and `README.md`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProjectConfig {
+    /// Override the project description. When set, takes precedence over
+    /// any `description` field in `Cargo.toml` / `package.json` /
+    /// `pyproject.toml`.
+    pub description: Option<String>,
+    /// Override the README path. When set, this file is read instead of
+    /// auto-detecting `README.md` / `README.rst` in the repo root.
+    pub readme: Option<PathBuf>,
+    /// Disable README auto-detection entirely. Useful when the README
+    /// contains content that shouldn't be sent to an LLM.
+    #[serde(default)]
+    pub no_readme: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -289,6 +309,15 @@ fn merge(mut base: Config, next: Config) -> Config {
     }
     if next.license.key.is_some() {
         base.license.key = next.license.key;
+    }
+    if next.project.description.is_some() {
+        base.project.description = next.project.description;
+    }
+    if next.project.readme.is_some() {
+        base.project.readme = next.project.readme;
+    }
+    if next.project.no_readme != ProjectConfig::default().no_readme {
+        base.project.no_readme = next.project.no_readme;
     }
     base
 }

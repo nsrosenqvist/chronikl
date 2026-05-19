@@ -3,6 +3,6 @@
 mod loader;
 
 pub use loader::{
-    Config, ConfigError, LadderConfig, LicenseConfig, OutputConfig, OutputFormat, ProviderConfig,
-    TelemetryConfig, VoiceConfig,
+    Config, ConfigError, LadderConfig, LicenseConfig, OutputConfig, OutputFormat, ProjectConfig,
+    ProviderConfig, TelemetryConfig, VoiceConfig,
 };

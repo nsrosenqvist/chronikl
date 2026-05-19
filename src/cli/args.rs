@@ -67,6 +67,24 @@ pub struct GenerateArgs {
     #[arg(long)]
     pub rich_context: bool,
 
+    /// One-line project description folded into the prose-pass user
+    /// prompt. Overrides auto-detection from `Cargo.toml` /
+    /// `package.json` / `pyproject.toml` and the `[project].description`
+    /// field in TOML.
+    #[arg(long, value_name = "TEXT")]
+    pub project_description: Option<String>,
+
+    /// Path to a README file whose intro is folded into the prose-pass
+    /// user prompt. Defaults to auto-detection (`README.md`,
+    /// `README.rst`, `README.txt`, `README`) in the repo root.
+    #[arg(long, value_name = "PATH", conflicts_with = "no_readme")]
+    pub readme: Option<PathBuf>,
+
+    /// Disable README detection entirely. Use when the README contains
+    /// content that shouldn't go to the LLM.
+    #[arg(long, conflicts_with = "readme")]
+    pub no_readme: bool,
+
     /// Enable Tier 3 agentic fallback. The model gets read-only tools
     /// (read_file, list_directory, search_text) so it can explore the
     /// repo to figure out commits the lower tiers can't classify

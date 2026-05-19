@@ -17,6 +17,7 @@ pub mod license;
 pub mod models;
 pub mod output;
 pub mod progress;
+pub mod project;
 pub mod prompts;
 pub mod prose;
 pub mod providers;

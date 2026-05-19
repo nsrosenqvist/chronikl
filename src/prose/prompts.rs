@@ -8,6 +8,7 @@
 use crate::models::{
     Classified, ClassifiedCommit, MergeStyle, ReleaseKind, VersionBump, VersionScheme,
 };
+use crate::project::ProjectContext;
 use crate::voice::Voice;
 
 /// Build the system prompt for the prose pass: the voice's body, plus
@@ -92,8 +93,10 @@ pub fn build_user_prompt(
     bump: VersionBump,
     scheme: Option<VersionScheme>,
     rich_context: bool,
+    project: &ProjectContext,
 ) -> String {
     let mut out = String::new();
+    push_project_context(&mut out, project);
     let count = classified.len();
     let range_str = match from_ref {
         Some(from) => format!("{from}..{to_ref}"),
@@ -152,6 +155,29 @@ pub fn build_user_prompt(
          `## What's Changed` wrapper.\n",
     );
     out
+}
+
+/// Prepend a "Project context:" block when any field is present. Goes
+/// before the range-opener so the model has "what this project is"
+/// before it reads the commit list. Silently no-op when the context is
+/// empty, so callers don't need to branch.
+fn push_project_context(out: &mut String, project: &ProjectContext) {
+    if project.is_empty() {
+        return;
+    }
+    out.push_str("Project context:\n\n");
+    if let Some(desc) = &project.description {
+        out.push_str(&format!("- Description: {desc}\n"));
+    }
+    if let Some(intro) = &project.readme_intro {
+        out.push_str("- README intro:\n");
+        for line in intro.lines() {
+            out.push_str("    ");
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out.push('\n');
 }
 
 fn push_entry(out: &mut String, entry: &ClassifiedCommit, rich_context: bool) {
@@ -473,6 +499,7 @@ mod tests {
             VersionBump::Patch,
             None,
             false,
+            &ProjectContext::default(),
         );
         assert!(prompt.contains("v0.1.0..HEAD"));
         assert!(prompt.contains("squash"));
@@ -505,6 +532,7 @@ mod tests {
             VersionBump::Major,
             None,
             false,
+            &ProjectContext::default(),
         );
         assert!(prompt.contains("prerelease (rc.1)"));
         assert!(prompt.contains("Version bump: major"));
@@ -567,6 +595,7 @@ mod tests {
             VersionBump::Unknown,
             None,
             false,
+            &ProjectContext::default(),
         );
         assert!(prompt.contains("(#42)"));
         assert!(prompt.contains("PR #42: Add SSO support"));
@@ -589,6 +618,7 @@ mod tests {
             VersionBump::Initial,
             None,
             false,
+            &ProjectContext::default(),
         );
         assert!(prompt.contains("initial-release announcement"));
         assert!(prompt.contains("no prior version"));
@@ -613,6 +643,7 @@ mod tests {
             VersionBump::Patch,
             None,
             false,
+            &ProjectContext::default(),
         );
         assert!(prompt.contains("Generate release notes for the range"));
         assert!(!prompt.contains("initial-release announcement"));
@@ -630,6 +661,7 @@ mod tests {
             VersionBump::Patch,
             None,
             false,
+            &ProjectContext::default(),
         );
         assert!(prompt.contains("No commits in range"));
     }
@@ -661,6 +693,7 @@ mod tests {
             VersionBump::Unknown,
             None,
             false,
+            &ProjectContext::default(),
         );
         assert!(!prompt.contains("commit-body:"));
         assert!(!prompt.contains("pr-body:"));
@@ -694,6 +727,7 @@ mod tests {
             VersionBump::Unknown,
             None,
             true,
+            &ProjectContext::default(),
         );
         assert!(prompt.contains("commit-body:"));
         assert!(prompt.contains("A meaningful commit body explaining the change."));
@@ -716,6 +750,7 @@ mod tests {
             VersionBump::Unknown,
             None,
             true,
+            &ProjectContext::default(),
         );
         assert!(!prompt.contains("commit-body:"));
         assert!(!prompt.contains("pr-body:"));
@@ -740,6 +775,7 @@ mod tests {
             VersionBump::Unknown,
             None,
             true,
+            &ProjectContext::default(),
         );
         // The body block exists, contains an ellipsis, and the prompt as
         // a whole stays well below 2× the cap (i.e. truncation actually
@@ -747,6 +783,62 @@ mod tests {
         assert!(prompt.contains("commit-body:"));
         assert!(prompt.contains("…"));
         assert!(prompt.len() < COMMIT_BODY_PREVIEW * 2);
+    }
+
+    #[test]
+    fn build_user_prompt_renders_project_context_block_when_present() {
+        let classified = Classified(vec![entry(
+            "wire up auth",
+            Section::Features,
+            ClassificationSource::Conventional,
+        )]);
+        let project = ProjectContext {
+            description: Some("AI-powered release notes generator".into()),
+            readme_intro: Some("# chronikl\n\nTurn commits into prose.".into()),
+        };
+        let prompt = build_user_prompt(
+            &classified,
+            Some("684e57a"),
+            "v1.0.0",
+            MergeStyle::Rebase,
+            &ReleaseKind::Stable,
+            VersionBump::Initial,
+            None,
+            false,
+            &project,
+        );
+        // Project block must come before the range opener so the model
+        // reads "what this project is" first.
+        let i_project = prompt.find("Project context:").unwrap();
+        let i_opener = prompt.find("initial-release announcement").unwrap();
+        assert!(i_project < i_opener);
+        assert!(prompt.contains("- Description: AI-powered release notes generator"));
+        assert!(prompt.contains("- README intro:"));
+        assert!(prompt.contains("# chronikl"));
+        assert!(prompt.contains("Turn commits into prose."));
+    }
+
+    #[test]
+    fn build_user_prompt_omits_project_context_block_when_empty() {
+        let classified = Classified(vec![entry(
+            "add login",
+            Section::Features,
+            ClassificationSource::Conventional,
+        )]);
+        let prompt = build_user_prompt(
+            &classified,
+            Some("v0.1.0"),
+            "v0.1.1",
+            MergeStyle::Rebase,
+            &ReleaseKind::Stable,
+            VersionBump::Patch,
+            None,
+            false,
+            &ProjectContext::default(),
+        );
+        assert!(!prompt.contains("Project context:"));
+        // The range opener should still be the first line.
+        assert!(prompt.trim_start().starts_with("Generate release notes for the range"));
     }
 
     #[test]
@@ -761,6 +853,7 @@ mod tests {
             VersionBump::Unknown,
             None,
             false,
+            &ProjectContext::default(),
         );
         assert!(prompt.contains("`HEAD`"));
         assert!(!prompt.contains(".."));

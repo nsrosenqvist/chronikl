@@ -7,6 +7,7 @@ use chronikl::models::{
     Classification, ClassificationSource, Classified, ClassifiedCommit, Commit, MergeStyle, PrInfo,
     ReleaseKind, Section, VersionBump,
 };
+use chronikl::project::ProjectContext;
 use chronikl::prose::{self, ProseRequest};
 use chronikl::providers::NotesProvider;
 use chronikl::providers::mock::MockProvider;
@@ -98,6 +99,7 @@ async fn prose_pass_returns_model_markdown_and_records_audit() {
             from_ref: Some("v0.1.0"),
             to_ref: "HEAD",
             rich_context: false,
+            project_context: &ProjectContext::default(),
         },
         &provider as &dyn NotesProvider,
         &audit,
@@ -176,6 +178,7 @@ async fn prose_pass_strips_markdown_code_fence_wrapper() {
             from_ref: None,
             to_ref: "HEAD",
             rich_context: false,
+            project_context: &ProjectContext::default(),
         },
         &provider as &dyn NotesProvider,
         &audit,
@@ -218,6 +221,7 @@ async fn prose_pass_propagates_provider_error() {
             from_ref: None,
             to_ref: "HEAD",
             rich_context: false,
+            project_context: &ProjectContext::default(),
         },
         &provider as &dyn NotesProvider,
         &audit,

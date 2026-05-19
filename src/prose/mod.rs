@@ -11,6 +11,7 @@ pub mod prompts;
 use crate::audit::AuditSink;
 use crate::constants::PROSE_MAX_OUTPUT_TOKENS;
 use crate::models::{Classified, MergeStyle, ReleaseKind, VersionBump, VersionScheme};
+use crate::project::ProjectContext;
 use crate::providers::{CompletionRequest, NotesProvider, ProviderError};
 use crate::voice::Voice;
 
@@ -32,6 +33,12 @@ pub struct ProseRequest<'a> {
     /// PR bodies under each entry. Off by default; opt-in via
     /// `--rich-context` or `[voice].rich_context = true`.
     pub rich_context: bool,
+    /// Optional project metadata (description, README intro) folded
+    /// into the user prompt as a "Project context:" block. Auto-detected
+    /// from `Cargo.toml` / `package.json` / `pyproject.toml` and the
+    /// repo's README by default; configurable via `[project]` in TOML
+    /// or `--project-description` / `--readme` / `--no-readme`.
+    pub project_context: &'a ProjectContext,
 }
 
 /// Run the prose pass. Returns the Markdown text produced by the model.
@@ -61,6 +68,7 @@ pub async fn run(
         request.version_bump,
         request.version_scheme,
         request.rich_context,
+        request.project_context,
     );
 
     let shas: Vec<String> = request

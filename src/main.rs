@@ -20,6 +20,7 @@ use chronikl::license::{self, ExpiryStatus};
 use chronikl::models::Classified;
 use chronikl::output::{self, RenderOptions};
 use chronikl::progress::{HeaderInfo, LicenseStatus, Progress, SummaryInfo};
+use chronikl::project::{self, ResolveInputs};
 use chronikl::prose::{self, ProseRequest};
 use chronikl::providers::{NotesProvider, rig::RigProvider};
 use chronikl::telemetry::{HeartbeatPayload, TierCounts};
@@ -762,6 +763,17 @@ async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Option<Stri
         return Ok(None);
     }
     let started = progress.stage_start();
+    let project_context = project::resolve(
+        repo,
+        ResolveInputs {
+            cli_description: args.project_description.as_deref(),
+            cli_readme: args.readme.as_deref(),
+            cli_no_readme: args.no_readme,
+            toml_description: cfg.project.description.as_deref(),
+            toml_readme: cfg.project.readme.as_deref(),
+            toml_no_readme: cfg.project.no_readme,
+        },
+    );
     let request = ProseRequest {
         voice: voice_obj,
         extra_instructions: cfg.voice.extra_instructions.as_deref(),
@@ -774,6 +786,7 @@ async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Option<Stri
         from_ref: range.from.as_deref(),
         to_ref: &range.to,
         rich_context: args.rich_context || cfg.voice.rich_context,
+        project_context: &project_context,
     };
     match prose::run(request, provider.as_ref(), audit).await {
         Ok(md) => {
@@ -1016,6 +1029,17 @@ async fn debug_prompts(
     println!();
     println!("### user");
     println!("```");
+    let project_context = project::resolve(
+        &repo_path,
+        ResolveInputs {
+            cli_description: None,
+            cli_readme: None,
+            cli_no_readme: false,
+            toml_description: cfg.project.description.as_deref(),
+            toml_readme: cfg.project.readme.as_deref(),
+            toml_no_readme: cfg.project.no_readme,
+        },
+    );
     println!(
         "{}",
         prose_prompts::build_user_prompt(
@@ -1027,6 +1051,7 @@ async fn debug_prompts(
             version_bump,
             version_scheme,
             rich_context_arg || cfg.voice.rich_context,
+            &project_context,
         )
     );
     println!("```");
