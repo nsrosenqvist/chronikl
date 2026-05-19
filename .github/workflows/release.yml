@@ -243,3 +243,16 @@ jobs:
             git tag -f "$TAG" "$GITHUB_REF_NAME"
             git push origin "$TAG" --force
           done
+
+  notify-web:
+    needs: [release, build]
+    if: needs.build.outputs.is_prerelease != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify chronikl-web of new release
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CHRONIKL_WEB_DISPATCH_TOKEN }}
+          repository: nsrosenqvist/chronikl-web
+          event-type: release-published
+          client-payload: '{"tag": "${{ github.ref_name }}"}'
