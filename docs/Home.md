@@ -2,6 +2,8 @@
 
 AI-powered release notes for your team. Bring your own model, bring your own API key. Designed to run inside your release workflow.
 
+> **Output is advisory.** chronikl's prose pass is LLM-generated and can mischaracterise breaking changes, omit context, or invent motivation that isn't in the commits. Review every release note before tagging the release. The optional `--audit-log` flag records every LLM call (model, tokens, prompt + response hashes) so you can reconstruct *why* chronikl said something months later — see [CLI Reference](08-CLI-Reference).
+
 ---
 
 ## Getting Started

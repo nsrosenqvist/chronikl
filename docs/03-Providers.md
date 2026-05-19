@@ -68,6 +68,20 @@ export CHRONIKL_MODEL=llama3
 
 No API key required. Ollama doesn't support strict structured outputs as well as Anthropic/OpenAI, so chronikl's response parser is tolerant of markdown-fenced or prose-prefixed JSON.
 
+## Data sent to the provider
+
+Every chronikl run sends content to your configured provider. Choose a provider you trust, or run a local model via Ollama. What crosses the boundary:
+
+- **Always:** commit messages (subject + body) for every commit in the range; file paths touched; the configured voice prompt and any `--prompt` addendum.
+- **Tier 2:** the commit diff (truncated to `max_diff_tokens`, default 4000) for any commit Tier 1 flagged as low-confidence.
+- **Tier 3 (`--agent`):** whatever files the agent's tools read during its turns — by default a sandboxed view of the repo. Only fires when `--agent` is on.
+- **PR enrichment:** PR titles, bodies, and labels for the PRs linked to commits in range, when a `GITHUB_TOKEN` is available.
+- **`--rich-context`:** full commit bodies and PR bodies in the prose-pass user prompt (off by default).
+
+What does **not** cross the boundary: repo files outside the diff (without `--agent`), environment variables, your license key, or unrelated git history.
+
+If any of this is sensitive — diffs containing customer data, internal-only PR bodies, etc. — pick a provider with an appropriate DPA, or use Ollama to keep everything on-device.
+
 ## Cost control
 
 The classification ladder is cost-aware:

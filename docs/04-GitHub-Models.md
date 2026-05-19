@@ -93,10 +93,14 @@ A 50-commit release on `openai/gpt-4o-mini` usually issues 2–6 LLM calls total
 
 ---
 
-## Caveats vs. raw OpenAI
+## Caveats
 
+> **Third-party dependency notice:** GitHub Models is a separate service operated by GitHub, not by chronikl. Available models, rate limits, model name format, and request semantics are all subject to change by GitHub at any time. Before depending on a specific model for production CI, verify it works with the free unlicensed version of chronikl.
+
+- **Pin a model.** GitHub may deprecate or rename models without notice; set an explicit `CHRONIKL_MODEL` (in `.chronikl.toml` or env) rather than relying on a vendor alias.
 - **Schema strictness varies by underlying model.** OpenAI publisher models honour `response_format: json_schema`; some others don't. Chronikl's response parser tolerates markdown-fenced or prose-prefixed JSON, so this rarely matters in practice.
-- **No automatic prompt-caching headers.** Unlike Anthropic via rig's `with_automatic_caching()`, GitHub Models doesn't expose a caching opt-in header. Implicit prefix caching may apply on a per-publisher basis.
+- **Prompt caching is opaque.** GitHub Models doesn't expose a caching opt-in header (unlike Anthropic via rig's `with_automatic_caching()`) and upstream caching behaviour isn't documented. Chronikl's audit log may not report cache hits even when the underlying provider is caching.
+- **Free tier resets per UTC day.** Plan large releases accordingly — a 200-commit release with `--agent` started late in the UTC day may exhaust the daily cap mid-run.
 - **PAT scope drift.** GitHub may rename `models:read` over time. If you get a 403, re-issue the PAT and check the latest scope name in GitHub's settings UI.
 
 ---
