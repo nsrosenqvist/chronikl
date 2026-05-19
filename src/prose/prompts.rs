@@ -61,6 +61,11 @@ const PR_BODY_PREVIEW: usize = 1000;
 /// Build the user prompt: a structured listing of the classified
 /// commits the model should turn into prose.
 ///
+/// Classifier-provenance fields (source tier, confidence) are kept out
+/// of the user prompt — they're audit-log material, and including them
+/// here historically caused the writer to surface them as fake `(#…)`
+/// references when no real PR ID was available.
+///
 /// Format:
 ///
 /// ```text
@@ -71,11 +76,11 @@ const PR_BODY_PREVIEW: usize = 1000;
 /// Commits, grouped by section:
 ///
 /// ## Breaking Changes
-/// - Drop support for Node 18  [conv, conf=1.0]
+/// - Drop support for Node 18  (#42)
 ///   PR #42: Remove legacy runtime  labels: breaking-change
 ///
 /// ## Features
-/// - Add login flow  [llm-batch, conf=0.8]
+/// - Add login flow
 /// ```
 #[allow(clippy::too_many_arguments)]
 pub fn build_user_prompt(
@@ -94,9 +99,20 @@ pub fn build_user_prompt(
         Some(from) => format!("{from}..{to_ref}"),
         None => to_ref.to_string(),
     };
-    out.push_str(&format!(
-        "Generate release notes for the range `{range_str}` ({count} commits).\n\n"
-    ));
+    if matches!(bump, VersionBump::Initial) {
+        out.push_str(&format!(
+            "Generate the initial-release announcement. There is no prior \
+             version of this project. The commits below (range: `{range_str}`, \
+             {count} commits) are the work that *prepared* this release — they \
+             are not additions to a pre-existing product. Treat them as \
+             evidence of what the project includes, and frame the announcement \
+             as a description of what the project *is*.\n\n"
+        ));
+    } else {
+        out.push_str(&format!(
+            "Generate release notes for the range `{range_str}` ({count} commits).\n\n"
+        ));
+    }
     out.push_str(&format!("Detected merge style: {merge_style}.\n"));
     out.push_str(&format!("Version bump: {}.\n", bump.as_str()));
     if let Some(s) = scheme {
@@ -140,9 +156,7 @@ pub fn build_user_prompt(
 
 fn push_entry(out: &mut String, entry: &ClassifiedCommit, rich_context: bool) {
     let summary = entry.classification.summary.trim();
-    let source = source_tag(&entry.classification.source);
-    let conf = entry.classification.confidence;
-    out.push_str(&format!("- {summary}  [{source}, conf={conf:.1}]"));
+    out.push_str(&format!("- {summary}"));
     if let Some(pr_id) = entry.commit.pr_id {
         out.push_str(&format!("  (#{pr_id})"));
     }
@@ -194,18 +208,6 @@ fn truncate(s: &str, max_chars: usize) -> String {
     }
     let prefix: String = trimmed.chars().take(max_chars).collect();
     format!("{prefix}…")
-}
-
-fn source_tag(source: &crate::models::ClassificationSource) -> &'static str {
-    use crate::models::ClassificationSource::*;
-    match source {
-        Conventional => "conv",
-        FilesHeuristic { .. } => "files",
-        Default => "default",
-        BatchedLlm => "llm-batch",
-        PerCommitLlm => "llm-per-commit",
-        Agentic => "llm-agent",
-    }
 }
 
 #[cfg(test)]
@@ -478,10 +480,15 @@ mod tests {
         assert!(prompt.contains("Version bump: patch"));
         assert!(prompt.contains("## Breaking Changes"));
         assert!(prompt.contains("- drop legacy"));
-        assert!(prompt.contains("[conv,"));
         assert!(prompt.contains("## Features"));
         assert!(prompt.contains("- add login"));
-        assert!(prompt.contains("[llm-batch,"));
+        // Classifier-provenance must NOT leak into the user prompt:
+        // historically `[conv, conf=1.0]` / `[llm-batch, conf=0.6]` were
+        // appended after each summary, and writer models surfaced the
+        // tags as fake `(#conv)` references when no real PR ID existed.
+        assert!(!prompt.contains("[conv"));
+        assert!(!prompt.contains("[llm-batch"));
+        assert!(!prompt.contains("conf="));
     }
 
     #[test]
@@ -501,6 +508,36 @@ mod tests {
         );
         assert!(prompt.contains("prerelease (rc.1)"));
         assert!(prompt.contains("Version bump: major"));
+    }
+
+    #[test]
+    fn push_entry_omits_classifier_provenance() {
+        // Regression: source tier ('conv', 'llm-batch', …) and confidence
+        // must not appear in the user prompt. They used to be appended as
+        // `[source, conf=N]` and writer models occasionally surfaced the
+        // tags as fake `(#conv)` references when no real PR ID was
+        // present.
+        let e = entry(
+            "add login",
+            Section::Features,
+            ClassificationSource::BatchedLlm,
+        );
+        let mut out = String::new();
+        push_entry(&mut out, &e, false);
+        assert_eq!(out, "- add login\n");
+    }
+
+    #[test]
+    fn push_entry_appends_pr_id_when_present() {
+        let mut e = entry(
+            "add login",
+            Section::Features,
+            ClassificationSource::BatchedLlm,
+        );
+        e.commit.pr_id = Some(42);
+        let mut out = String::new();
+        push_entry(&mut out, &e, false);
+        assert_eq!(out, "- add login  (#42)\n");
     }
 
     #[test]
@@ -534,6 +571,51 @@ mod tests {
         assert!(prompt.contains("(#42)"));
         assert!(prompt.contains("PR #42: Add SSO support"));
         assert!(prompt.contains("labels: enhancement"));
+    }
+
+    #[test]
+    fn build_user_prompt_uses_initial_release_opener_on_initial_bump() {
+        let classified = Classified(vec![entry(
+            "wire up auth",
+            Section::Features,
+            ClassificationSource::Conventional,
+        )]);
+        let prompt = build_user_prompt(
+            &classified,
+            Some("684e57a"),
+            "v1.0.0",
+            MergeStyle::Rebase,
+            &ReleaseKind::Stable,
+            VersionBump::Initial,
+            None,
+            false,
+        );
+        assert!(prompt.contains("initial-release announcement"));
+        assert!(prompt.contains("no prior version"));
+        assert!(prompt.contains("not additions to a pre-existing product"));
+        // The generic delta opener must not appear for initial releases.
+        assert!(!prompt.contains("Generate release notes for the range"));
+    }
+
+    #[test]
+    fn build_user_prompt_uses_generic_opener_for_non_initial_bumps() {
+        let classified = Classified(vec![entry(
+            "fix nav",
+            Section::BugFixes,
+            ClassificationSource::Conventional,
+        )]);
+        let prompt = build_user_prompt(
+            &classified,
+            Some("v1.0.0"),
+            "v1.0.1",
+            MergeStyle::Rebase,
+            &ReleaseKind::Stable,
+            VersionBump::Patch,
+            None,
+            false,
+        );
+        assert!(prompt.contains("Generate release notes for the range"));
+        assert!(!prompt.contains("initial-release announcement"));
     }
 
     #[test]

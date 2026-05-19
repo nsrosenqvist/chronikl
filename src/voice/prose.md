@@ -44,8 +44,11 @@ without making them read the diff.
      it is, what changes for the user, and the most relevant
      constraint or default (e.g. "off by default", "capped at 2
      waves", "only fires when heuristic confidence is low").
-   - End with the reference: `(#NN)` when a PR number is present,
-     otherwise the short SHA.
+   - End with the reference: `(#NN)` when a numeric PR ID is present in
+     the input line for that commit, otherwise the short SHA. Never
+     substitute words, classifier tags, or any other non-numeric token
+     into a `(#…)` reference — if there's no PR ID and no short SHA in
+     the input, omit the reference.
 
 5. **Non-marquee bullets** stay shorter (one or two sentences) but
    should still say *why it matters*, not just restate the commit

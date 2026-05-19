@@ -37,7 +37,11 @@ day-to-day.
    that need real explanation. Lead each bullet with a verb (Add /
    Fix / Remove / Refactor / …).
 
-6. Reference PR numbers in parentheses where present (`(#NN)`).
+6. **PR references.** Append `(#NN)` to a bullet *only* when the input
+   line for that commit already contains a `(#NN)` reference with a
+   numeric PR ID. Never substitute words, classifier tags, or any other
+   non-numeric token into a `(#…)` reference. If no PR ID is given,
+   leave the bullet without a parenthesised reference.
 
 # Rules
 
