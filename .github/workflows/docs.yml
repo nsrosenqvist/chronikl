@@ -1,21 +1,24 @@
-name: Sync docs to GitHub Wiki
+name: Docs
 
 on:
   push:
     branches: [main]
     paths:
       - 'docs/**'
+  gollum:
 
 jobs:
-  sync-wiki:
+  docs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Checkout repo
+        if: github.event_name == 'push'
         uses: actions/checkout@v6
 
       - name: Sync to wiki
+        if: github.event_name == 'push'
         uses: Andrew-Chen-Wang/github-wiki-action@v4
         with:
           path: docs/
