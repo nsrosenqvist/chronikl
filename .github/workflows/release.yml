@@ -6,6 +6,9 @@ on:
 
 permissions:
   contents: write
+  # `models: read` is required for the dogfooded release-notes step,
+  # which calls the just-built chronikl binary against GitHub Models.
+  models: read
 
 jobs:
   build:
@@ -109,35 +112,50 @@ jobs:
           cd artifacts
           sha256sum *.tar.gz > SHA256SUMS
 
-      # NOTE: Once chronikl is feature-complete, this step can be replaced
-      # with `chronikl --from "$PREV_TAG" --to "$GITHUB_REF_NAME" --output release_notes.md`
-      # to dogfood the tool. Until then, raw git log keeps the pipeline
-      # functional for the early bootstrap releases.
-      - name: Build changelog
+      - name: Extract chronikl binary for self-use
+        run: |
+          tar xzf artifacts/chronikl-x86_64-unknown-linux-gnu.tar.gz
+          chmod +x chronikl
+
+      # Dogfood: the just-built chronikl writes its own release notes,
+      # talking to GitHub Models via the workflow's GITHUB_TOKEN (no
+      # extra secret required — `permissions: models: read` is enough).
+      # Falls back to raw git log if chronikl fails for any reason.
+      - name: Build changelog with chronikl
         id: changelog
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHRONIKL_PROVIDER: github-models
+          CHRONIKL_MODEL: openai/gpt-4o-mini
         run: |
           # Find the previous tag (excluding floating major/minor tags like v0, v0.2)
           PREV_TAG=$(git tag --list 'v*.*.*' --sort=-v:refname \
             | grep -v "^${GITHUB_REF_NAME}$" | head -n 1)
 
           if [ -n "$PREV_TAG" ]; then
-            RANGE="${PREV_TAG}..${GITHUB_REF_NAME}"
+            FROM="$PREV_TAG"
             DIFF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${GITHUB_REF_NAME}"
           else
-            RANGE="${GITHUB_REF_NAME}"
+            # No prior tag yet — diff against the root commit.
+            FROM=$(git rev-list --max-parents=0 HEAD | head -n 1)
             DIFF_URL=""
           fi
 
-          {
-            echo "## What's Changed"
-            echo ""
-            git log "$RANGE" --pretty=format:"- %s (%h)" --no-merges
-            echo ""
-            if [ -n "$DIFF_URL" ]; then
+          if ./chronikl --from "$FROM" --to "$GITHUB_REF_NAME" --output release_notes.md; then
+            echo "chronikl: generated release notes ($(wc -c < release_notes.md) bytes)"
+          else
+            echo "chronikl failed; falling back to raw git log"
+            {
+              echo "## What's Changed"
               echo ""
-              echo "**Full Changelog**: ${DIFF_URL}"
-            fi
-          } > release_notes.md
+              git log "${FROM}..${GITHUB_REF_NAME}" --pretty=format:"- %s (%h)" --no-merges
+              echo ""
+              if [ -n "$DIFF_URL" ]; then
+                echo ""
+                echo "**Full Changelog**: ${DIFF_URL}"
+              fi
+            } > release_notes.md
+          fi
 
       - name: Create release
         uses: softprops/action-gh-release@v2
