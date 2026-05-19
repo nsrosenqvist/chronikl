@@ -141,7 +141,9 @@ jobs:
             DIFF_URL=""
           fi
 
-          if ./chronikl --from "$FROM" --to "$GITHUB_REF_NAME" --output release_notes.md; then
+          if ./chronikl --from "$FROM" --to "$GITHUB_REF_NAME" \
+               --voice prose --rich-context \
+               --output release_notes.md; then
             echo "chronikl: generated release notes ($(wc -c < release_notes.md) bytes)"
           else
             echo "chronikl failed; falling back to raw git log"
