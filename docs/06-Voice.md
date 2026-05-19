@@ -113,5 +113,5 @@ This dumps the assembled system prompt + user prompt for every tier and the pros
 
 ## Related Pages
 
-- [Configuration](04-Configuration) — `[voice]` TOML section
-- [CLI Reference](07-CLI-Reference) — `--voice`, `--prompt`, `validate`, `debug prompts`
+- [Configuration](05-Configuration) — `[voice]` TOML section
+- [CLI Reference](08-CLI-Reference) — `--voice`, `--prompt`, `validate`, `debug prompts`

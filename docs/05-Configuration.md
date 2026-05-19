@@ -93,4 +93,4 @@ chronikl --no-cache     # bypass for one run
 ## Related Pages
 
 - [LLM Providers](03-Providers) — provider-specific keys
-- [CLI Reference](07-CLI-Reference) — every flag
+- [CLI Reference](08-CLI-Reference) — every flag

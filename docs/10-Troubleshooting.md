@@ -89,5 +89,5 @@ Prints the full payload to stderr before posting.
 
 ## Related Pages
 
-- [CLI Reference](07-CLI-Reference) — every flag
-- [Configuration](04-Configuration) — env vars + TOML
+- [CLI Reference](08-CLI-Reference) — every flag
+- [Configuration](05-Configuration) — env vars + TOML

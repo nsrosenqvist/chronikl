@@ -119,4 +119,5 @@ The audit JSON includes every LLM call (model, tokens, prompt hash, response has
 ## Related Pages
 
 - [LLM Providers](03-Providers) — provider/model selection
-- [Configuration](04-Configuration) — `.chronikl.toml`
+- [GitHub Models](04-GitHub-Models) — zero-secret CI setup using the auto-injected `GITHUB_TOKEN`
+- [Configuration](05-Configuration) — `.chronikl.toml`

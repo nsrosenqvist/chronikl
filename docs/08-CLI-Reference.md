@@ -85,7 +85,7 @@ chronikl license status             # show currently active license
 chronikl license deactivate         # remove the on-disk key
 ```
 
-See [Licensing](08-Licensing).
+See [Licensing](09-Licensing).
 
 ### `chronikl update [--force]`
 
@@ -128,5 +128,5 @@ chronikl --provider anthropic \
 
 ## Related Pages
 
-- [Configuration](04-Configuration) — TOML alternatives
-- [Voice](05-Voice) — voice file format
+- [Configuration](05-Configuration) — TOML alternatives
+- [Voice](06-Voice) — voice file format

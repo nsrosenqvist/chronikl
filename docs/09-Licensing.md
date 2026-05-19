@@ -55,9 +55,9 @@ Removes the on-disk key.
 
 Currently nothing — chronikl's behaviour is identical with or without a valid license. The license check is informational. If you're using chronikl commercially in production, you need a license to comply with BUSL-1.1, but the binary doesn't gate any features behind it.
 
-The presence/absence of an active license is reported in the [telemetry heartbeat](04-Configuration#telemetry) (just a boolean — no key material is transmitted).
+The presence/absence of an active license is reported in the [telemetry heartbeat](05-Configuration#telemetry) (just a boolean — no key material is transmitted).
 
 ## Related Pages
 
-- [Configuration](04-Configuration) — `[license]` section + `CHRONIKL_LICENSE_KEY`
+- [Configuration](05-Configuration) — `[license]` section + `CHRONIKL_LICENSE_KEY`
 - [LICENSE](https://github.com/nsrosenqvist/chronikl/blob/main/LICENSE)

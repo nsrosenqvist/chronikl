@@ -92,6 +92,9 @@ pub enum ProviderName {
     DeepSeek,
     Galadriel,
     Gemini,
+    #[serde(rename = "github-models")]
+    #[strum(serialize = "github-models")]
+    GithubModels,
     Groq,
     HuggingFace,
     Hyperbolic,
@@ -119,6 +122,7 @@ mod tests {
             "anthropic",
             "openai",
             "gemini",
+            "github-models",
             "ollama",
             "openai-compatible",
         ] {

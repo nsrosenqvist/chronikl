@@ -6,13 +6,14 @@
 - [Installation](01-Installation)
 - [Quick Start](02-Quick-Start)
 - [LLM Providers](03-Providers)
+- [GitHub Models](04-GitHub-Models)
 
 **Using chronikl**
-- [Configuration](04-Configuration)
-- [Voice](05-Voice)
-- [CI/CD Integration](06-CI-Integration)
+- [Configuration](05-Configuration)
+- [Voice](06-Voice)
+- [CI/CD Integration](07-CI-Integration)
 
 **Reference**
-- [CLI Reference](07-CLI-Reference)
-- [Licensing](08-Licensing)
-- [Troubleshooting](09-Troubleshooting)
+- [CLI Reference](08-CLI-Reference)
+- [Licensing](09-Licensing)
+- [Troubleshooting](10-Troubleshooting)

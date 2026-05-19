@@ -15,6 +15,7 @@ chronikl uses [rig-core](https://crates.io/crates/rig-core) to talk to LLMs. Bri
 | DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` |
 | Galadriel | `galadriel` | `CHRONIKL_API_KEY` |
 | Gemini (Google) | `gemini` | `GEMINI_API_KEY` |
+| GitHub Models | `github-models` | `GITHUB_MODELS_TOKEN` or `GITHUB_TOKEN` — needs `models:read` scope |
 | Groq | `groq` | `GROQ_API_KEY` |
 | HuggingFace | `huggingface` | `HF_API_KEY` |
 | Hyperbolic | `hyperbolic` | `CHRONIKL_API_KEY` |
@@ -81,5 +82,6 @@ A 50-commit release on `claude-sonnet-4-6` typically uses 5,000–15,000 input t
 
 ## Related Pages
 
-- [Configuration](04-Configuration) — TOML alternatives to env vars
-- [CLI Reference](07-CLI-Reference) — `--provider`, `--model`, `--api-key`, `--base-url`
+- [GitHub Models](04-GitHub-Models) — hosted OpenAI-compatible gateway, zero-secret setup in GitHub Actions
+- [Configuration](05-Configuration) — TOML alternatives to env vars
+- [CLI Reference](08-CLI-Reference) — `--provider`, `--model`, `--api-key`, `--base-url`

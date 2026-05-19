@@ -17,7 +17,7 @@ use rig::tool::ToolDyn;
 
 use crate::audit::{AuditSink, CallStatus, LlmCallAudit, hash_hex, now_unix_ms};
 use crate::config::ProviderConfig;
-use crate::constants::{ENV_API_KEY, MAX_RETRIES};
+use crate::constants::{ENV_API_KEY, GITHUB_MODELS_BASE_URL, MAX_RETRIES};
 use crate::models::TokenUsage;
 use crate::providers::agent_loop::{LoopConfig, LoopOutcome, run_agent_loop};
 use crate::providers::response::{is_retryable, retry_backoff};
@@ -239,6 +239,25 @@ impl RigProvider {
             ProviderName::Gemini => {
                 let client: providers::gemini::Client =
                     build_client(providers::gemini::Client::new(api_key), "Gemini")?;
+                dispatch_call(client.completion_model(&self.model_id), args).await
+            }
+            ProviderName::GithubModels => {
+                // GitHub Models is OpenAI-compatible at a hosted endpoint.
+                // CHRONIKL_BASE_URL is honoured so users can switch to the
+                // org-attribution variant (`/orgs/<org>/inference`) without
+                // a separate config knob.
+                let base_url = self
+                    .config
+                    .base_url
+                    .clone()
+                    .unwrap_or_else(|| GITHUB_MODELS_BASE_URL.to_string());
+                let client: providers::openai::CompletionsClient = build_client(
+                    providers::openai::CompletionsClient::builder()
+                        .api_key(api_key)
+                        .base_url(base_url)
+                        .build(),
+                    "GitHub Models",
+                )?;
                 dispatch_call(client.completion_model(&self.model_id), args).await
             }
             ProviderName::Perplexity => {
@@ -469,6 +488,7 @@ impl RigProvider {
             ProviderName::DeepSeek => "deepseek",
             ProviderName::Galadriel => "galadriel",
             ProviderName::Gemini => "gemini",
+            ProviderName::GithubModels => "github-models",
             ProviderName::Groq => "groq",
             ProviderName::HuggingFace => "huggingface",
             ProviderName::Hyperbolic => "hyperbolic",

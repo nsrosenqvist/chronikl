@@ -11,18 +11,19 @@ New to chronikl? Start here:
 1. **[Installation](01-Installation)** — download the binary, install from source, or pull the Docker image.
 2. **[Quick Start](02-Quick-Start)** — generate your first release notes in under two minutes.
 3. **[LLM Providers](03-Providers)** — connect Anthropic, OpenAI, Gemini, or any compatible API.
+4. **[GitHub Models](04-GitHub-Models)** — zero-secret setup in GitHub Actions via `GITHUB_TOKEN`.
 
 ## Using chronikl
 
-- **[Configuration](04-Configuration)** — `.chronikl.toml`, environment variables, and CLI flags.
-- **[Voice](05-Voice)** — control tone with a custom Markdown file or one-off `--prompt`.
-- **[CI/CD Integration](06-CI-Integration)** — GitHub Actions, GitLab CI, etc.
+- **[Configuration](05-Configuration)** — `.chronikl.toml`, environment variables, and CLI flags.
+- **[Voice](06-Voice)** — control tone with a custom Markdown file or one-off `--prompt`.
+- **[CI/CD Integration](07-CI-Integration)** — GitHub Actions, GitLab CI, etc.
 
 ## Reference
 
-- **[CLI Reference](07-CLI-Reference)** — every command and flag.
-- **[Licensing](08-Licensing)** — free tier, commercial activation.
-- **[Troubleshooting](09-Troubleshooting)** — common issues and solutions.
+- **[CLI Reference](08-CLI-Reference)** — every command and flag.
+- **[Licensing](09-Licensing)** — free tier, commercial activation.
+- **[Troubleshooting](10-Troubleshooting)** — common issues and solutions.
 
 ---
 

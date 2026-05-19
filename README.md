@@ -27,7 +27,7 @@ $ chronikl --from v0.1.0 --to v0.2.0
 - **Voice control.** Pick a bundled profile (`--voice terse` for one-line bullets, `--voice prose` for richer multi-sentence entries) or point at your own plain-Markdown voice file. Add `--rich-context` to feed commit + PR bodies to the prose pass; `--prompt "..."` for one-off tweaks.
 - **Release-context aware.** Detects prerelease vs. stable, semver vs. CalVer, and the bump kind (major/minor/patch). Prose adjusts tone — major releases lead with breaking changes, patches lead with fixes, etc.
 - **Veritrail-style audit log.** Optional `--audit-log` writes a full JSON record of every LLM call (model, tokens, prompt + response hashes, tool calls). Lets you answer "why did chronikl say that?" months later.
-- **19 LLM providers.** Anthropic, OpenAI, Gemini, Cohere, DeepSeek, xAI, Groq, Perplexity, HuggingFace, Mistral, Moonshot, Ollama, Azure, OpenRouter, Together, and any OpenAI-compatible endpoint.
+- **20 LLM providers.** Anthropic, OpenAI, Gemini, GitHub Models, Cohere, DeepSeek, xAI, Groq, Perplexity, HuggingFace, Mistral, Moonshot, Ollama, Azure, OpenRouter, Together, and any OpenAI-compatible endpoint.
 - **CI-first.** Ships as a GitHub Action, install.sh, Dockerfile, and self-update binary. Designed to drop into a release workflow.
 
 ## Quick install

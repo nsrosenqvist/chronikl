@@ -91,6 +91,11 @@ pub const ENV_DEBUG: &str = "CHRONIKL_DEBUG";
 /// is `gh` CLI's convention. PR enrichment uses whichever is set first.
 pub const GITHUB_TOKEN_ENV_VARS: &[&str] = &["GITHUB_TOKEN", "GH_TOKEN"];
 
+/// GitHub Models inference endpoint (OpenAI-compatible chat completions).
+/// Override per-call with `CHRONIKL_BASE_URL` — e.g. set to
+/// `https://models.github.ai/orgs/<org>/inference` to bill an organisation.
+pub const GITHUB_MODELS_BASE_URL: &str = "https://models.github.ai/inference";
+
 // ── Retry constants ─────────────────────────────────────────────────
 
 /// Maximum number of retry attempts for transient API errors.

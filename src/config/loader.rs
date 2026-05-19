@@ -202,6 +202,12 @@ fn lookup_provider_key(env: &Env, provider: &str) -> Option<String> {
         "openai" => &["OPENAI_API_KEY"],
         "azure" => &["AZURE_OPENAI_API_KEY", "AZURE_API_KEY"],
         "gemini" => &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        // GitHub Models accepts the standard CI-injected GITHUB_TOKEN as
+        // an API key, so workflows with `permissions: models: read` need
+        // no extra secret. GITHUB_MODELS_TOKEN is checked first so users
+        // can keep a dedicated fine-grained PAT separate from a general
+        // GITHUB_TOKEN.
+        "github-models" => &["GITHUB_MODELS_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"],
         "groq" => &["GROQ_API_KEY"],
         "mistral" => &["MISTRAL_API_KEY"],
         "deepseek" => &["DEEPSEEK_API_KEY"],
@@ -394,6 +400,29 @@ model = "claude-sonnet-4-6"
         ]);
         let cfg = Config::load(&env, dir.path(), None).unwrap();
         assert_eq!(cfg.provider.api_key.as_deref(), Some("sk-ant-test"));
+    }
+
+    #[test]
+    fn github_models_resolves_github_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::mock([
+            (ENV_PROVIDER, "github-models"),
+            ("GITHUB_TOKEN", "ghp_ci_test"),
+        ]);
+        let cfg = Config::load(&env, dir.path(), None).unwrap();
+        assert_eq!(cfg.provider.api_key.as_deref(), Some("ghp_ci_test"));
+    }
+
+    #[test]
+    fn github_models_token_beats_generic_github_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::mock([
+            (ENV_PROVIDER, "github-models"),
+            ("GITHUB_MODELS_TOKEN", "dedicated-pat"),
+            ("GITHUB_TOKEN", "generic-ci-token"),
+        ]);
+        let cfg = Config::load(&env, dir.path(), None).unwrap();
+        assert_eq!(cfg.provider.api_key.as_deref(), Some("dedicated-pat"));
     }
 
     #[test]
