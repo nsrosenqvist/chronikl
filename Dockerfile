@@ -15,7 +15,6 @@ RUN mkdir src && echo 'fn main() {}' > src/main.rs && \
 
 # Copy source and build for real.
 COPY src/ src/
-COPY tools/ tools/
 
 RUN cargo build --release --bin chronikl && \
     strip target/release/chronikl
