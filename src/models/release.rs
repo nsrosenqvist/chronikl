@@ -1,5 +1,4 @@
-//! Version + release classification used by the prose pass, audit, and
-//! telemetry.
+//! Version + release classification used by the prose pass and audit.
 //!
 //! Two output types:
 //!

@@ -12,5 +12,4 @@
 
 **Reference**
 - [CLI Reference](08-CLI-Reference)
-- [Licensing](09-Licensing)
 - [Troubleshooting](10-Troubleshooting)

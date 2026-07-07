@@ -9,7 +9,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 description = "AI-powered release notes generator"
-license = "BUSL-1.1"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/nsrosenqvist/chronikl"
 homepage = "https://chronikl.dev"
 readme = "README.md"
@@ -65,10 +65,6 @@ sha2 = "0.10"
 hex = "0.4"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
-# License key verification (Ed25519 offline signing)
-ed25519-dalek = { version = "2", features = ["std", "rand_core"] }
-base64 = "0.22"
-
 # Ordered maps
 indexmap = { version = "2", features = ["serde"] }
 
@@ -91,7 +87,6 @@ futures = "0.3"
 [dev-dependencies]
 tempfile = "3"
 pretty_assertions = "1"
-rand_core = { version = "0.6", features = ["getrandom"] }
 serial_test = "3"
 tokio = { version = "1", features = ["full", "test-util"] }
 
@@ -99,11 +94,3 @@ tokio = { version = "1", features = ["full", "test-util"] }
 lto = true
 codegen-units = 1
 strip = true
-
-[[example]]
-name = "keygen"
-path = "tools/keygen.rs"
-
-[[example]]
-name = "issue_license"
-path = "tools/issue_license.rs"

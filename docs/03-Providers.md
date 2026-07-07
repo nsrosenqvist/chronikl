@@ -78,7 +78,7 @@ Every chronikl run sends content to your configured provider. Choose a provider 
 - **PR enrichment:** PR titles, bodies, and labels for the PRs linked to commits in range, when a `GITHUB_TOKEN` is available.
 - **`--rich-context`:** full commit bodies and PR bodies in the prose-pass user prompt (off by default).
 
-What does **not** cross the boundary: repo files outside the diff (without `--agent`), environment variables, your license key, or unrelated git history.
+What does **not** cross the boundary: repo files outside the diff (without `--agent`), environment variables, or unrelated git history.
 
 If any of this is sensitive — diffs containing customer data, internal-only PR bodies, etc. — pick a provider with an appropriate DPA, or use Ollama to keep everything on-device.
 

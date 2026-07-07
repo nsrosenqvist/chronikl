@@ -98,11 +98,6 @@ pub struct GenerateArgs {
     #[arg(long)]
     pub no_cache: bool,
 
-    /// Disable the anonymous heartbeat (also `CHRONIKL_TELEMETRY=false`
-    /// or `[telemetry] enabled = false` in `.chronikl.toml`).
-    #[arg(long)]
-    pub no_telemetry: bool,
-
     /// Write a JSON audit log of every LLM call (model, tokens, prompt
     /// hash, response hash, commits covered) to this path. Opt-in.
     #[arg(long, value_name = "FILE", env = "CHRONIKL_AUDIT_LOG")]
@@ -124,10 +119,6 @@ pub enum Command {
     #[command(subcommand)]
     Cache(CacheCommand),
 
-    /// Manage the chronikl license key.
-    #[command(subcommand)]
-    License(LicenseCommand),
-
     /// Self-update the chronikl binary from the latest GitHub release.
     Update {
         /// Re-install even when the running version equals the latest.
@@ -148,20 +139,6 @@ pub enum CacheCommand {
     Stats,
     /// Remove every cached classification at the current schema.
     Clear,
-}
-
-#[derive(Subcommand, Debug)]
-pub enum LicenseCommand {
-    /// Verify a license key and write it to the on-disk store.
-    Activate {
-        /// The license key (base64). When omitted, read one line from stdin.
-        #[arg(value_name = "KEY")]
-        key: Option<String>,
-    },
-    /// Show the currently active license, if any, and its expiry status.
-    Status,
-    /// Remove the on-disk license key.
-    Deactivate,
 }
 
 #[derive(Subcommand, Debug)]

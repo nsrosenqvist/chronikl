@@ -43,12 +43,6 @@ batch_size            = 50
 [output]
 format = "markdown"
 # path = "RELEASE_NOTES.md"
-
-[telemetry]
-enabled = true
-
-[license]
-# key from CHRONIKL_LICENSE_KEY env var (preferred), or via `chronikl license activate`
 ```
 
 Anything you omit falls back to the built-in default.
@@ -61,12 +55,9 @@ Anything you omit falls back to the built-in default.
 | `CHRONIKL_MODEL` | Model ID |
 | `CHRONIKL_API_KEY` | Generic API key (provider-specific keys also work) |
 | `CHRONIKL_BASE_URL` | Base URL for `openai-compatible`, `azure`, `ollama` |
-| `CHRONIKL_LICENSE_KEY` | Active license key |
-| `CHRONIKL_TELEMETRY` | `false` to disable the heartbeat |
 | `CHRONIKL_AUDIT_LOG` | Write a per-run JSON audit log to this path |
 | `CHRONIKL_CACHE_DIR` | Override the on-disk cache root |
 | `CHRONIKL_NO_PR_ENRICHMENT` | `true` to skip PR fetching even on GitHub |
-| `CHRONIKL_DEBUG` | `true` to print the heartbeat payload before posting |
 | `GITHUB_TOKEN` / `GH_TOKEN` | Picked up automatically for PR enrichment in CI |
 
 Also accepted: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, etc. — chronikl checks `CHRONIKL_API_KEY` first, then falls back to the provider-specific name.

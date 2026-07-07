@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/nsrosenqvist/chronikl/workflows/CI/badge.svg)](https://github.com/nsrosenqvist/chronikl/actions)
 [![Crates.io](https://img.shields.io/crates/v/chronikl)](https://crates.io/crates/chronikl)
-[![License](https://img.shields.io/badge/license-BUSL--1.1-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](#license)
 
 **AI-powered release notes for your team.** Generate clean, sectioned, voice-tuned Markdown release notes from your git history. Bring your own model, bring your own API key.
 
@@ -36,7 +36,7 @@ $ chronikl --from v0.1.0 --to v0.2.0
 curl -sSfL https://raw.githubusercontent.com/nsrosenqvist/chronikl/main/install.sh | sh
 ```
 
-Or via Homebrew, Cargo, or Docker — see the [Installation guide](https://github.com/nsrosenqvist/chronikl/wiki/01-Installation).
+Or via Homebrew, Cargo, or Docker — see the [Installation guide](https://chronikl.dev/docs/installation/).
 
 ## Quick start
 
@@ -49,7 +49,7 @@ cd path/to/your/repo
 chronikl
 ```
 
-That's it. chronikl finds the latest semver tag, diffs against `HEAD`, classifies, and writes Markdown to stdout. See the [Quick Start](https://github.com/nsrosenqvist/chronikl/wiki/02-Quick-Start) for more.
+That's it. chronikl finds the latest semver tag, diffs against `HEAD`, classifies, and writes Markdown to stdout. See the [Quick Start](https://chronikl.dev/docs/quick-start/) for more.
 
 ## In a release workflow
 
@@ -80,29 +80,34 @@ jobs:
           body_path: release_notes.md
 ```
 
-See [CI Integration](https://github.com/nsrosenqvist/chronikl/wiki/06-CI-Integration) for more.
+See [CI Integration](https://chronikl.dev/docs/ci-integration/) for more.
 
 ## Documentation
 
-Full docs live in the [GitHub Wiki](https://github.com/nsrosenqvist/chronikl/wiki):
+Full docs live at [chronikl.dev/docs](https://chronikl.dev/docs):
 
-- [Installation](https://github.com/nsrosenqvist/chronikl/wiki/01-Installation)
-- [Quick Start](https://github.com/nsrosenqvist/chronikl/wiki/02-Quick-Start)
-- [LLM Providers](https://github.com/nsrosenqvist/chronikl/wiki/03-Providers)
-- [Configuration](https://github.com/nsrosenqvist/chronikl/wiki/04-Configuration)
-- [Voice](https://github.com/nsrosenqvist/chronikl/wiki/05-Voice)
-- [CI/CD Integration](https://github.com/nsrosenqvist/chronikl/wiki/06-CI-Integration)
-- [CLI Reference](https://github.com/nsrosenqvist/chronikl/wiki/07-CLI-Reference)
-- [Licensing](https://github.com/nsrosenqvist/chronikl/wiki/08-Licensing)
-- [Troubleshooting](https://github.com/nsrosenqvist/chronikl/wiki/09-Troubleshooting)
+- [Installation](https://chronikl.dev/docs/installation/)
+- [Quick Start](https://chronikl.dev/docs/quick-start/)
+- [LLM Providers](https://chronikl.dev/docs/providers/)
+- [GitHub Models](https://chronikl.dev/docs/github-models/)
+- [Configuration](https://chronikl.dev/docs/configuration/)
+- [Voice](https://chronikl.dev/docs/voice/)
+- [CI/CD Integration](https://chronikl.dev/docs/ci-integration/)
+- [CLI Reference](https://chronikl.dev/docs/cli-reference/)
+- [Troubleshooting](https://chronikl.dev/docs/troubleshooting/)
 
-The `docs/` folder in this repo is auto-synced to the wiki on each push to `main`.
+The docs source lives in [`docs/`](docs/); the published site is built from each tagged release.
 
 ## License
 
-[BUSL-1.1](LICENSE). Free for personal, educational, non-commercial, and open-source use. Commercial production use requires a separate license — contact `niklas.s.rosenqvist@gmail.com`. Each version converts to Apache-2.0 three years after release.
+Licensed under either of
 
-See [Licensing](https://github.com/nsrosenqvist/chronikl/wiki/08-Licensing) for activation details.
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
 
 ## Contributing
 

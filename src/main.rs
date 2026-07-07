@@ -7,23 +7,19 @@ use colored::Colorize;
 
 use chronikl::audit::{AuditSink, ConfigSnapshot, RangeSnapshot};
 use chronikl::cache::{ClassificationCache, NullCache, default_cache_root, disk::DiskCache};
-use chronikl::cli::{
-    CacheCommand, Cli, Command, DebugCommand, GenerateArgs, LicenseCommand, RangeArgs,
-};
+use chronikl::cli::{CacheCommand, Cli, Command, DebugCommand, GenerateArgs, RangeArgs};
 use chronikl::config::Config;
 use chronikl::constants::{BUILD_DATE, FULL_VERSION, GIT_SHA, TARGET};
 use chronikl::enrichment;
 use chronikl::env::Env;
 use chronikl::git::{self, Range, merge_style};
 use chronikl::ladder::{tier0, tier1, tier2, tier3};
-use chronikl::license::{self, ExpiryStatus};
 use chronikl::models::Classified;
 use chronikl::output::{self, RenderOptions};
-use chronikl::progress::{HeaderInfo, LicenseStatus, Progress, SummaryInfo};
+use chronikl::progress::{HeaderInfo, Progress, SummaryInfo};
 use chronikl::project::{self, ResolveInputs};
 use chronikl::prose::{self, ProseRequest};
 use chronikl::providers::{NotesProvider, rig::RigProvider};
-use chronikl::telemetry::{HeartbeatPayload, TierCounts};
 use chronikl::voice;
 
 #[tokio::main]
@@ -45,7 +41,6 @@ async fn run() -> anyhow::Result<()> {
         }
         Some(Command::Validate { file }) => validate_voice(&file),
         Some(Command::Cache(cmd)) => cache_command(cmd),
-        Some(Command::License(cmd)) => license_command(cmd),
         Some(Command::Update { force }) => chronikl::update::run_update(force)
             .await
             .map_err(Into::into),
@@ -84,75 +79,6 @@ fn validate_voice(file: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn license_command(cmd: LicenseCommand) -> anyhow::Result<()> {
-    match cmd {
-        LicenseCommand::Activate { key } => {
-            let raw = match key {
-                Some(k) => k,
-                None => {
-                    use std::io::BufRead;
-                    let stdin = std::io::stdin();
-                    stdin
-                        .lock()
-                        .lines()
-                        .next()
-                        .ok_or_else(|| anyhow::anyhow!("no license key provided"))?
-                        .map_err(anyhow::Error::from)?
-                }
-            };
-            let claims = license::verify_license_key(raw.trim())?;
-            let path = license::write_to_disk(raw.trim())?;
-            println!("{} {}", "OK".green().bold(), path.display());
-            println!(
-                "  customer: {} ({})",
-                claims.customer_name, claims.customer_id
-            );
-            println!("  issued:   {}", claims.issued_at);
-            println!("  expires:  {}", claims.expires_at);
-            match license::check_expiry(&claims)? {
-                ExpiryStatus::Valid => println!("  status:   {}", "valid".green()),
-                ExpiryStatus::ExpiringSoon { days } => {
-                    println!("  status:   {} ({days} days)", "expiring soon".yellow())
-                }
-                ExpiryStatus::Expired => println!("  status:   {}", "expired".red()),
-            }
-        }
-        LicenseCommand::Status => match license::resolve_key() {
-            None => println!("{} no license configured", "info:".dimmed()),
-            Some(key) => match license::verify_license_key(&key) {
-                Ok(claims) => {
-                    println!(
-                        "customer: {} ({})",
-                        claims.customer_name, claims.customer_id
-                    );
-                    println!("issued:   {}", claims.issued_at);
-                    println!("expires:  {}", claims.expires_at);
-                    match license::check_expiry(&claims)? {
-                        ExpiryStatus::Valid => println!("status:   {}", "valid".green()),
-                        ExpiryStatus::ExpiringSoon { days } => {
-                            println!("status:   {} ({days} days)", "expiring soon".yellow())
-                        }
-                        ExpiryStatus::Expired => println!("status:   {}", "expired".red()),
-                    }
-                }
-                Err(e) => {
-                    eprintln!("{} {e}", "Error:".red().bold());
-                    return Err(anyhow::anyhow!("invalid license"));
-                }
-            },
-        },
-        LicenseCommand::Deactivate => {
-            let removed = license::remove_from_disk()?;
-            if removed {
-                println!("{} license removed", "OK".green().bold());
-            } else {
-                println!("{} no license file to remove", "info:".dimmed());
-            }
-        }
-    }
-    Ok(())
-}
-
 fn cache_command(cmd: CacheCommand) -> anyhow::Result<()> {
     let repo = std::env::current_dir().expect("cwd available");
     let cache = DiskCache::new(default_cache_root(&repo));
@@ -188,104 +114,7 @@ fn cache_command(cmd: CacheCommand) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Aggregate counters populated during a run, used to build the
-/// telemetry heartbeat at the end (regardless of success/failure).
-struct RunStats {
-    commit_count: usize,
-    tier_counts: TierCounts,
-    provider: Option<String>,
-    model: Option<String>,
-    merge_style: String,
-    prerelease: bool,
-    version_bump: chronikl::models::VersionBump,
-    version_scheme: Option<chronikl::models::VersionScheme>,
-    custom_voice: bool,
-    agent_used: bool,
-    pr_enrichment: bool,
-    audit_log: bool,
-}
-
-impl Default for RunStats {
-    fn default() -> Self {
-        Self {
-            commit_count: 0,
-            tier_counts: TierCounts::default(),
-            provider: None,
-            model: None,
-            merge_style: String::new(),
-            prerelease: false,
-            version_bump: chronikl::models::VersionBump::Unknown,
-            version_scheme: None,
-            custom_voice: false,
-            agent_used: false,
-            pr_enrichment: false,
-            audit_log: false,
-        }
-    }
-}
-
 async fn generate(args: GenerateArgs) -> anyhow::Result<()> {
-    let mut stats = RunStats::default();
-    let result = generate_inner(args.clone(), &mut stats).await;
-
-    // Heartbeat: fire-and-forget at the end. Honour --no-telemetry, the
-    // env var, and the TOML setting. We re-read config here cheaply —
-    // it's local TOML + env, no network. If config load itself errors
-    // we just skip telemetry (no-op, can't tell what to send).
-    let telemetry_enabled = telemetry_decision(&args).unwrap_or(false);
-    if telemetry_enabled {
-        // License presence in the heartbeat is informational. The
-        // license module short-circuits expired keys to None so this
-        // tracks the "active" population, not just "anyone has ever
-        // entered a key".
-        let licensed = license::current_claims().is_some();
-        let payload = HeartbeatPayload::from_release(
-            stats.commit_count,
-            stats.tier_counts,
-            stats.provider,
-            stats.model,
-            if stats.merge_style.is_empty() {
-                "unknown".to_string()
-            } else {
-                stats.merge_style
-            },
-            stats.prerelease,
-            stats.version_bump.as_str(),
-            stats.version_scheme.map(|s| s.as_str().to_string()),
-            stats.custom_voice,
-            stats.agent_used,
-            stats.pr_enrichment,
-            stats.audit_log,
-            licensed,
-            result.is_ok(),
-        );
-        // Fire-and-forget — but with a short bounded await so the POST
-        // has a chance to complete before `#[tokio::main]` drops the
-        // runtime (which cancels still-pending spawned tasks).
-        let handle = chronikl::telemetry::send_heartbeat(payload);
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), handle).await;
-    }
-
-    result
-}
-
-/// Decide whether telemetry should fire based on flag/env/config.
-/// Errors loading config → telemetry off (safe default).
-fn telemetry_decision(args: &GenerateArgs) -> anyhow::Result<bool> {
-    if args.no_telemetry {
-        return Ok(false);
-    }
-    let repo = args
-        .repo
-        .clone()
-        .unwrap_or_else(|| std::env::current_dir().expect("cwd available"));
-    let env = Env::real();
-    let home = dirs::config_dir();
-    let cfg = Config::load(&env, &repo, home.as_deref())?;
-    Ok(cfg.telemetry.enabled)
-}
-
-async fn generate_inner(args: GenerateArgs, stats: &mut RunStats) -> anyhow::Result<()> {
     let progress = Progress::new(true);
 
     let repo = args
@@ -296,23 +125,15 @@ async fn generate_inner(args: GenerateArgs, stats: &mut RunStats) -> anyhow::Res
     let home = dirs::config_dir();
     let cfg = Config::load(&env, &repo, home.as_deref())?;
 
-    stats.audit_log = args.audit_log.is_some();
-    stats.provider = cfg.provider.name.clone();
-    stats.model = cfg.provider.model.clone();
-
     let spec = args.range.to_spec();
     let range = git::resolve_range(&repo, &spec).await?;
     let commits = git::log(&repo, &range).await?;
-    stats.commit_count = commits.len();
+    let commit_count = commits.len();
 
     let detected_style = merge_style::detect(&commits);
-    stats.merge_style = detected_style.to_string();
     let release_kind = git::detect_release_kind(&repo, &range.to).await?;
-    stats.prerelease = release_kind.is_prerelease();
     let (version_bump, version_scheme) =
         git::detect_version_bump(&repo, range.from.as_deref(), &range.to).await?;
-    stats.version_bump = version_bump;
-    stats.version_scheme = version_scheme;
 
     // Voice resolution — CLI `--voice` (name or path) wins over TOML
     // `[voice].path` which wins over TOML `[voice].profile`; otherwise
@@ -322,7 +143,6 @@ async fn generate_inner(args: GenerateArgs, stats: &mut RunStats) -> anyhow::Res
         cfg.voice.path.as_deref(),
         cfg.voice.profile.as_deref(),
     )?;
-    stats.custom_voice = voice_obj.is_custom;
 
     let release_label = match &release_kind {
         chronikl::models::ReleaseKind::Stable => "stable".to_string(),
@@ -339,22 +159,6 @@ async fn generate_inner(args: GenerateArgs, stats: &mut RunStats) -> anyhow::Res
         range.to,
         commits.len(),
     );
-    // Resolve license claims for the banner. Only treat the claim as
-    // active when it verifies AND hasn't expired — a stored-but-expired
-    // key falls back to the free-tier banner so users notice their key
-    // needs renewal.
-    let license_claims = license::current_claims().filter(|c| {
-        matches!(
-            license::check_expiry(c),
-            Ok(license::ExpiryStatus::Valid | license::ExpiryStatus::ExpiringSoon { .. })
-        )
-    });
-    let license_status = match &license_claims {
-        Some(c) => LicenseStatus::Licensed {
-            name: &c.customer_name,
-        },
-        None => LicenseStatus::Free,
-    };
     // Voice header label: bundled profile name when bundled, else the
     // file name of the custom voice. Custom-voice path priority mirrors
     // the resolver: CLI `--voice` (since `bundled_name == None` here
@@ -381,14 +185,12 @@ async fn generate_inner(args: GenerateArgs, stats: &mut RunStats) -> anyhow::Res
         provider: cfg.provider.name.as_deref(),
         model: cfg.provider.model.as_deref(),
         voice: &voice_label,
-        license: license_status,
     });
 
     // ── Stage: PR enrichment ────────────────────────────────────────
     let mut enriched = chronikl::models::EnrichedCommit::from_commits(commits.clone());
     let (enricher, enrich_note) =
         enrichment::platform::detect(&repo, &env, args.no_pr_enrichment).await?;
-    stats.pr_enrichment = enricher.name() == "github";
     if args.no_pr_enrichment {
         progress.stage_skip("PR enrichment", "disabled (--no-pr-enrichment)");
     } else if enricher.name() == "no-op" {
@@ -449,7 +251,6 @@ async fn generate_inner(args: GenerateArgs, stats: &mut RunStats) -> anyhow::Res
         format!("{confident_t0}/{} placed", classified.len()),
         started,
     );
-    stats.tier_counts.tier0 = classified.len();
 
     // ── Stage: Cache populate ──────────────────────────────────────
     let cache: Box<dyn ClassificationCache> = if args.no_cache {
@@ -460,7 +261,6 @@ async fn generate_inner(args: GenerateArgs, stats: &mut RunStats) -> anyhow::Res
     let model_for_cache = cfg.provider.model.clone().unwrap_or_default();
     if !args.no_llm && !model_for_cache.is_empty() {
         let hits = cache.populate(&mut classified, &model_for_cache);
-        stats.tier_counts.cache_hits = hits;
         if hits > 0 {
             progress.info(format!("cache hit on {hits} commit(s)"));
         }
@@ -483,7 +283,6 @@ async fn generate_inner(args: GenerateArgs, stats: &mut RunStats) -> anyhow::Res
             audit: &audit,
             cache: cache.as_ref(),
             model_for_cache: &model_for_cache,
-            stats,
             progress: &progress,
         })
         .await?
@@ -558,7 +357,7 @@ async fn generate_inner(args: GenerateArgs, stats: &mut RunStats) -> anyhow::Res
     progress.summary(SummaryInfo {
         output_path: output_path_str.as_deref(),
         output_bytes: markdown.len(),
-        commits: stats.commit_count,
+        commits: commit_count,
         llm_calls: call_count,
         tokens: token_totals,
         elapsed: progress.elapsed(),
@@ -621,7 +420,6 @@ struct LlmPipelineCtx<'a> {
     audit: &'a AuditSink,
     cache: &'a dyn ClassificationCache,
     model_for_cache: &'a str,
-    stats: &'a mut RunStats,
     progress: &'a Progress,
 }
 
@@ -643,7 +441,6 @@ async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Option<Stri
         audit,
         cache,
         model_for_cache,
-        stats,
         progress,
     } = ctx;
 
@@ -674,7 +471,6 @@ async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Option<Stri
             tier1::default_system_prompt(),
         )
         .await?;
-        stats.tier_counts.tier1 = updated_t1;
         let batches = pending_t1.div_ceil(cfg.ladder.batch_size.max(1));
         progress.stage_done(
             "Tier 1 batched LLM",
@@ -708,7 +504,6 @@ async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Option<Stri
             tier2::default_system_prompt(),
         )
         .await?;
-        stats.tier_counts.tier2 = updated_t2;
         progress.stage_done(
             "Tier 2 per-commit",
             format!("{updated_t2} of {pending_t2} commit(s) (with diff)"),
@@ -737,8 +532,6 @@ async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Option<Stri
                 tier3::default_system_prompt(),
             )
             .await?;
-            stats.tier_counts.tier3 = updated_t3;
-            stats.agent_used = updated_t3 > 0;
             progress.stage_done(
                 "Tier 3 agentic",
                 format!("{updated_t3} of {pending_t3} commit(s)"),

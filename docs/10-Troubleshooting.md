@@ -73,20 +73,6 @@ Dumps every prompt (Tier 1 / Tier 2 / Tier 3 / prose) that would be built, witho
 
 For a real run, set `--audit-log audit.json` — every LLM call is recorded with prompt + response SHA-256 hashes, token counts, and the full classification trail.
 
-## Telemetry — what gets sent?
-
-chronikl posts an anonymous heartbeat per run with aggregate counters only: commit count, tier counts, model name (not key), provider name, success/fail, version. No commit text, no prose, no diffs, no API keys, no file paths.
-
-Disable with `--no-telemetry`, `CHRONIKL_TELEMETRY=false`, or `[telemetry] enabled = false` in `.chronikl.toml`.
-
-To inspect what *would* be sent:
-
-```bash
-CHRONIKL_DEBUG=1 chronikl …
-```
-
-Prints the full payload to stderr before posting.
-
 ## Related Pages
 
 - [CLI Reference](08-CLI-Reference) — every flag

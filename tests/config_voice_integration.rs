@@ -7,9 +7,7 @@
 use std::path::Path;
 
 use chronikl::config::{Config, OutputFormat};
-use chronikl::constants::{
-    CONFIG_DIR, CONFIG_FILENAME, ENV_API_KEY, ENV_MODEL, ENV_PROVIDER, ENV_TELEMETRY,
-};
+use chronikl::constants::{CONFIG_DIR, CONFIG_FILENAME, ENV_API_KEY, ENV_MODEL, ENV_PROVIDER};
 use chronikl::env::Env;
 use chronikl::voice;
 
@@ -37,22 +35,16 @@ batch_size = 100
 max_diff_tokens = 4000
 agent_fallback = false
 confidence_threshold = 0.6
-
-[telemetry]
-enabled = true
 "#,
     );
 
-    // Repo overrides the model and disables telemetry locally.
+    // Repo overrides the model locally.
     let repo = tempfile::tempdir().unwrap();
     write(
         &repo.path().join(CONFIG_FILENAME),
         r#"
 [provider]
 model = "claude-opus-4-7"
-
-[telemetry]
-enabled = false
 "#,
     );
 
@@ -64,7 +56,6 @@ enabled = false
     assert_eq!(cfg.provider.model.as_deref(), Some("claude-haiku-4-5"));
     assert_eq!(cfg.provider.api_key.as_deref(), Some("k"));
     assert_eq!(cfg.ladder.batch_size, 100);
-    assert!(!cfg.telemetry.enabled);
 }
 
 #[test]
@@ -279,12 +270,4 @@ name = "openai"
     let env = Env::mock([(ENV_PROVIDER, "openai"), ("OPENAI_API_KEY", "sk-openai")]);
     let cfg = Config::load(&env, repo.path(), None).unwrap();
     assert_eq!(cfg.provider.api_key.as_deref(), Some("sk-openai"));
-}
-
-#[test]
-fn telemetry_off_via_env() {
-    let repo = tempfile::tempdir().unwrap();
-    let env = Env::mock([(ENV_TELEMETRY, "false")]);
-    let cfg = Config::load(&env, repo.path(), None).unwrap();
-    assert!(!cfg.telemetry.enabled);
 }

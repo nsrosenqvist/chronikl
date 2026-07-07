@@ -32,9 +32,7 @@ the configured voice.
 | `providers/` | `NotesProvider` trait + rig-core multi-provider impl |
 | `output/` | Markdown rendering, optional changelog prepend |
 | `cache/` | SHA-keyed disk cache for classifications |
-| `license/` | Ed25519 offline license verification (ported from nitpik) |
 | `update/` | Self-update from GitHub releases (ported from nitpik) |
-| `telemetry/` | Anonymous fire-and-forget heartbeat per run; opt-out via `--no-telemetry` |
 | `models/` | `Commit`, `EnrichedCommit`, `Classification`, `Section`, `Release` |
 | `progress/` | CI-aware progress reporter |
 
@@ -76,7 +74,6 @@ Keep lean; justify additions in commit messages. Notable runtime deps:
 - `octocrab` — GitHub API for PR enrichment
 - `clap` — CLI parsing
 - `tokio` + `reqwest` — async + HTTP
-- `ed25519-dalek` — offline license verification
 
 ### Configuration & environment variables
 

@@ -15,8 +15,7 @@ use thiserror::Error;
 
 use crate::constants::{
     CONFIG_DIR, CONFIG_FILENAME, DEFAULT_BATCH_SIZE, DEFAULT_CONFIDENCE_THRESHOLD,
-    DEFAULT_MAX_DIFF_TOKENS, ENV_API_KEY, ENV_BASE_URL, ENV_LICENSE_KEY, ENV_MODEL, ENV_PROVIDER,
-    ENV_TELEMETRY,
+    DEFAULT_MAX_DIFF_TOKENS, ENV_API_KEY, ENV_BASE_URL, ENV_MODEL, ENV_PROVIDER,
 };
 use crate::env::Env;
 
@@ -48,10 +47,6 @@ pub struct Config {
     pub ladder: LadderConfig,
     #[serde(default)]
     pub output: OutputConfig,
-    #[serde(default)]
-    pub telemetry: TelemetryConfig,
-    #[serde(default)]
-    pub license: LicenseConfig,
     #[serde(default)]
     pub project: ProjectConfig,
 }
@@ -135,22 +130,6 @@ pub struct OutputConfig {
     pub path: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TelemetryConfig {
-    pub enabled: bool,
-}
-
-impl Default for TelemetryConfig {
-    fn default() -> Self {
-        Self { enabled: true }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct LicenseConfig {
-    pub key: Option<String>,
-}
-
 impl Config {
     /// Load configuration with full precedence:
     /// defaults → global TOML → repo TOML → environment variables.
@@ -200,17 +179,6 @@ impl Config {
             }
         }
 
-        if let Ok(v) = env.var(ENV_LICENSE_KEY) {
-            self.license.key = Some(v);
-        }
-
-        if let Ok(v) = env.var(ENV_TELEMETRY) {
-            self.telemetry.enabled = parse_bool(&v).map_err(|m| ConfigError::InvalidValue {
-                key: ENV_TELEMETRY.into(),
-                message: m,
-            })?;
-        }
-
         Ok(())
     }
 }
@@ -242,14 +210,6 @@ fn lookup_provider_key(env: &Env, provider: &str) -> Option<String> {
         _ => &[],
     };
     candidates.iter().find_map(|k| env.var(k).ok())
-}
-
-fn parse_bool(s: &str) -> Result<bool, String> {
-    match s.trim().to_ascii_lowercase().as_str() {
-        "1" | "true" | "yes" | "on" => Ok(true),
-        "0" | "false" | "no" | "off" => Ok(false),
-        other => Err(format!("expected boolean (true/false/1/0), got `{other}`")),
-    }
 }
 
 fn read_toml(path: &Path) -> Result<Config, ConfigError> {
@@ -304,12 +264,6 @@ fn merge(mut base: Config, next: Config) -> Config {
     if next.output.path.is_some() {
         base.output.path = next.output.path;
     }
-    if next.telemetry.enabled != TelemetryConfig::default().enabled {
-        base.telemetry.enabled = next.telemetry.enabled;
-    }
-    if next.license.key.is_some() {
-        base.license.key = next.license.key;
-    }
     if next.project.description.is_some() {
         base.project.description = next.project.description;
     }
@@ -335,7 +289,6 @@ mod tests {
     #[test]
     fn defaults_are_sensible() {
         let cfg = Config::default();
-        assert!(cfg.telemetry.enabled);
         assert_eq!(cfg.ladder.batch_size, DEFAULT_BATCH_SIZE);
         assert_eq!(cfg.ladder.max_diff_tokens, DEFAULT_MAX_DIFF_TOKENS);
         assert!(matches!(cfg.output.format, OutputFormat::Markdown));
@@ -409,15 +362,10 @@ name = "anthropic"
 model = "claude-sonnet-4-6"
 "#,
         );
-        let env = Env::mock([
-            (ENV_PROVIDER, "openai"),
-            (ENV_MODEL, "gpt-5-mini"),
-            (ENV_TELEMETRY, "false"),
-        ]);
+        let env = Env::mock([(ENV_PROVIDER, "openai"), (ENV_MODEL, "gpt-5-mini")]);
         let cfg = Config::load(&env, dir.path(), None).unwrap();
         assert_eq!(cfg.provider.name.as_deref(), Some("openai"));
         assert_eq!(cfg.provider.model.as_deref(), Some("gpt-5-mini"));
-        assert!(!cfg.telemetry.enabled);
     }
 
     #[test]
@@ -467,39 +415,11 @@ model = "claude-sonnet-4-6"
     }
 
     #[test]
-    fn invalid_telemetry_value_is_an_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let env = Env::mock([(ENV_TELEMETRY, "maybe")]);
-        let err = Config::load(&env, dir.path(), None).unwrap_err();
-        assert!(matches!(err, ConfigError::InvalidValue { .. }));
-    }
-
-    #[test]
     fn malformed_toml_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
         write_toml(dir.path(), CONFIG_FILENAME, "this isn't = valid = toml");
         let env = Env::mock(Vec::<(&str, &str)>::new());
         let err = Config::load(&env, dir.path(), None).unwrap_err();
         assert!(matches!(err, ConfigError::Toml { .. }));
-    }
-
-    #[test]
-    fn telemetry_accepts_truthy_strings() {
-        for v in ["1", "true", "yes", "on", "TRUE", "True"] {
-            let dir = tempfile::tempdir().unwrap();
-            let env = Env::mock([(ENV_TELEMETRY, v)]);
-            let cfg = Config::load(&env, dir.path(), None).unwrap();
-            assert!(cfg.telemetry.enabled, "value `{v}` should parse to true");
-        }
-    }
-
-    #[test]
-    fn telemetry_accepts_falsy_strings() {
-        for v in ["0", "false", "no", "off", "FALSE"] {
-            let dir = tempfile::tempdir().unwrap();
-            let env = Env::mock([(ENV_TELEMETRY, v)]);
-            let cfg = Config::load(&env, dir.path(), None).unwrap();
-            assert!(!cfg.telemetry.enabled, "value `{v}` should parse to false");
-        }
     }
 }

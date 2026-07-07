@@ -95,7 +95,7 @@ A 50-commit release on `openai/gpt-4o-mini` usually issues 2–6 LLM calls total
 
 ## Caveats
 
-> **Third-party dependency notice:** GitHub Models is a separate service operated by GitHub, not by chronikl. Available models, rate limits, model name format, and request semantics are all subject to change by GitHub at any time. Before depending on a specific model for production CI, verify it works with the free unlicensed version of chronikl.
+> **Third-party dependency notice:** GitHub Models is a separate service operated by GitHub, not by chronikl. Available models, rate limits, model name format, and request semantics are all subject to change by GitHub at any time. Before depending on a specific model for production CI, verify it works with your installed version of chronikl.
 
 - **Pin a model.** GitHub may deprecate or rename models without notice; set an explicit `CHRONIKL_MODEL` (in `.chronikl.toml` or env) rather than relying on a vendor alias.
 - **Schema strictness varies by underlying model.** OpenAI publisher models honour `response_format: json_schema`; some others don't. Chronikl's response parser tolerates markdown-fenced or prose-prefixed JSON, so this rarely matters in practice.

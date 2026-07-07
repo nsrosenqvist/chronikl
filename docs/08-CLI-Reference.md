@@ -48,7 +48,6 @@ chronikl --since-last-tag                   # latest tag → HEAD, even when HEA
 | `--agent` | Enable Tier 3 agentic fallback (read-only repo tools for ambiguous commits). |
 | `--no-cache` | Skip the on-disk classification cache. |
 | `--no-pr-enrichment` | Skip PR fetching even when a GitHub remote is detected. Also `CHRONIKL_NO_PR_ENRICHMENT=true`. |
-| `--no-telemetry` | Disable the heartbeat for this run. |
 
 ## Subcommands
 
@@ -73,19 +72,6 @@ chronikl cache path     # print the cache root
 chronikl cache stats    # entries + total bytes
 chronikl cache clear    # remove every cached classification
 ```
-
-### `chronikl license {activate | status | deactivate}`
-
-Manage the chronikl license key.
-
-```bash
-chronikl license activate <KEY>     # verify and write to ~/.config/chronikl/license.key
-chronikl license activate           # read from stdin
-chronikl license status             # show currently active license
-chronikl license deactivate         # remove the on-disk key
-```
-
-See [Licensing](09-Licensing).
 
 ### `chronikl update [--force]`
 

@@ -22,10 +22,10 @@ use crate::models::TokenUsage;
 
 /// Width of the horizontal rules in the header/summary blocks.
 ///
-/// Sized to span the longest content line — the license banner runs to
-/// ~70 chars and the stage rows (`name 22 + detail 32 + duration 8` +
-/// padding) land in the same neighborhood, so 70 is the smallest width
-/// that doesn't look truncated next to the data.
+/// Sized to span the longest content line — the stage rows
+/// (`name 22 + detail 32 + duration 8` + padding) land around 70 chars,
+/// so 70 is the smallest width that doesn't look truncated next to the
+/// data.
 const RULE_WIDTH: usize = 70;
 
 /// Width of the stage-name column (left-aligned).
@@ -59,32 +59,12 @@ impl Progress {
         self.started.elapsed()
     }
 
-    /// Print the header block describing the run context. The
-    /// optional `license` line — `LicenseStatus::Licensed { name }` or
-    /// `LicenseStatus::Free` — is rendered above the rule with a
-    /// green dot, mirroring nitpik's banner.
+    /// Print the header block describing the run context.
     pub fn header(&self, info: HeaderInfo<'_>) {
         if !self.enabled {
             return;
         }
         eprintln!("{}", format!("chronikl {}", info.version).bold());
-        match info.license {
-            LicenseStatus::Licensed { name } => {
-                eprintln!(
-                    "  {} {}",
-                    "●".bright_green(),
-                    format!("Licensed to {name}. Thank you for supporting chronikl! ♥").dimmed(),
-                );
-            }
-            LicenseStatus::Free => {
-                eprintln!(
-                    "  {} {}",
-                    "●".bright_green(),
-                    "Free for personal & open-source use. Commercial use requires a license."
-                        .dimmed(),
-                );
-            }
-        }
         // Single blank line between the banner and the settings — no
         // rule. The next divider (after the settings) is enough to
         // visually section the header off from the stage rows.
@@ -259,19 +239,6 @@ pub struct HeaderInfo<'a> {
     pub provider: Option<&'a str>,
     pub model: Option<&'a str>,
     pub voice: &'a str,
-    pub license: LicenseStatus<'a>,
-}
-
-/// Whether a valid license key is currently active. Surfaced in the
-/// header banner so users know whether they're using chronikl under
-/// the free terms or under a commercial license.
-#[derive(Default, Debug, Clone)]
-pub enum LicenseStatus<'a> {
-    #[default]
-    Free,
-    Licensed {
-        name: &'a str,
-    },
 }
 
 /// Inputs for [`Progress::summary`].

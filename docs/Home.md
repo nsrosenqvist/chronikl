@@ -24,7 +24,6 @@ New to chronikl? Start here:
 ## Reference
 
 - **[CLI Reference](08-CLI-Reference)** — every command and flag.
-- **[Licensing](09-Licensing)** — free tier, commercial activation.
 - **[Troubleshooting](10-Troubleshooting)** — common issues and solutions.
 
 ---

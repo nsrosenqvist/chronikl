@@ -2,4 +2,4 @@
 
 pub mod args;
 
-pub use args::{CacheCommand, Cli, Command, DebugCommand, GenerateArgs, LicenseCommand, RangeArgs};
+pub use args::{CacheCommand, Cli, Command, DebugCommand, GenerateArgs, RangeArgs};

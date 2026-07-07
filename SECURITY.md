@@ -27,7 +27,6 @@ Include as much detail as possible: steps to reproduce, affected versions, and p
 
 - The `chronikl` CLI binary and its published Docker image
 - The Tier 3 agentic tool implementations (`read_file`, `list_directory`, `search_text`, `git_show`, `submit_classification`) and their path/SHA safety guards
-- License key verification (ed25519 offline signing)
 
 Out of scope: third-party LLM provider APIs, user-authored voice files, infrastructure not maintained by the chronikl project, and the safety of LLM-generated text itself (chronikl never executes the model's output).
 
@@ -36,8 +35,6 @@ Out of scope: third-party LLM provider APIs, user-authored voice files, infrastr
 - **What chronikl sends to LLM providers**: commit subjects + bodies + file paths; per-commit unified diffs (Tier 2/3, truncated to a token budget); PR titles + bodies + labels (when PR enrichment is active); the resolved voice + user-supplied prompt addenda. Nothing else — no API keys, no env vars, no `.git` internals, no file contents outside the diff or what tools fetch (Tier 3 only).
 - **Tier 3 read tools**: validated against the repo root, refuse `..`-traversal, refuse paths under `.git/`, refuse in-repo symlinks pointing outside the repo, hard caps on file size (256 KB) and result count (50 grep matches, 200 directory entries). `git_show` accepts only hex SHAs (4–64 chars), rejecting arbitrary ref names.
 - **Audit log**: prompt + response are recorded as SHA-256 hashes by default — the underlying text is never stored. Tool args are also hashed.
-- **Telemetry heartbeat**: aggregate counters only (commit count, tier counts, model name, success bit). Verified by a schema-allowlist test in CI.
-- **License key**: signed offline with ed25519. The private key never leaves the issuing server. The on-disk file (`~/.config/chronikl/license.key`) contains a base64 signed blob — it's not a secret, anyone with a valid key gets the same activation status.
 
 ## Prompt injection
 
