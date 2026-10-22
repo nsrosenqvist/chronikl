@@ -10,7 +10,9 @@ pub mod prompts;
 
 use crate::audit::AuditSink;
 use crate::constants::PROSE_MAX_OUTPUT_TOKENS;
-use crate::models::{Classified, MergeStyle, ReleaseKind, VersionBump, VersionScheme};
+use crate::models::{
+    Classified, MergeStyle, ReleaseKind, RenderSettings, VersionBump, VersionScheme,
+};
 use crate::project::ProjectContext;
 use crate::providers::{CompletionRequest, NotesProvider, ProviderError};
 use crate::voice::Voice;
@@ -39,6 +41,9 @@ pub struct ProseRequest<'a> {
     /// repo's README by default; configurable via `[project]` in TOML
     /// or `--project-description` / `--readme` / `--no-readme`.
     pub project_context: &'a ProjectContext,
+    /// Who the notes are for and their shape. The prompts ask for exactly this
+    /// shape; [`crate::output::shape`] enforces it on the result.
+    pub render: &'a RenderSettings,
 }
 
 /// Run the prose pass. Returns the Markdown text produced by the model.
@@ -58,6 +63,7 @@ pub async fn run(
         request.release_kind,
         request.version_bump,
         request.version_scheme,
+        request.render,
     );
     let user_prompt = prompts::build_user_prompt(
         request.classified,
@@ -69,6 +75,7 @@ pub async fn run(
         request.version_scheme,
         request.rich_context,
         request.project_context,
+        request.render,
     );
 
     let shas: Vec<String> = request
@@ -91,6 +98,43 @@ pub async fn run(
 
     let cleaned = postprocess(&response.text);
     Ok(cleaned)
+}
+
+/// What the prose model said, once its "nothing user-facing" answer is
+/// recognized.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProseOutcome {
+    /// Notes to publish (any stray token lines removed).
+    Notes(String),
+    /// The model found nothing a user would notice.
+    NothingUserFacing,
+}
+
+/// Recognize the [`crate::constants::NOTHING_USER_FACING_TOKEN`] answer.
+/// Lines that are only the token (with or without a bullet marker, code
+/// span or period) are dropped; when nothing else is left, the model
+/// meant "nothing user-facing".
+pub fn interpret(text: &str) -> ProseOutcome {
+    let token = crate::constants::NOTHING_USER_FACING_TOKEN;
+    let is_token = |line: &str| {
+        let t = line
+            .trim()
+            .trim_start_matches(['-', '*', '•'])
+            .trim()
+            .trim_matches(['`', '*', '_', '.', '"'])
+            .trim();
+        t.eq_ignore_ascii_case(token)
+    };
+    if !text.lines().any(is_token) {
+        return ProseOutcome::Notes(text.to_string());
+    }
+    let kept: Vec<&str> = text.lines().filter(|l| !is_token(l)).collect();
+    let kept = kept.join("\n");
+    if kept.trim().is_empty() {
+        ProseOutcome::NothingUserFacing
+    } else {
+        ProseOutcome::Notes(kept.trim().to_string())
+    }
 }
 
 /// Light post-processing on the model's Markdown:
@@ -121,6 +165,33 @@ fn strip_full_fence(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interpret_recognizes_the_nothing_token() {
+        for text in [
+            "NO_USER_FACING_CHANGES",
+            "- NO_USER_FACING_CHANGES",
+            "`NO_USER_FACING_CHANGES`.",
+            "\n no_user_facing_changes \n",
+        ] {
+            assert_eq!(interpret(text), ProseOutcome::NothingUserFacing, "{text}");
+        }
+    }
+
+    #[test]
+    fn interpret_keeps_notes_and_drops_stray_tokens() {
+        assert_eq!(
+            interpret("- Faster search"),
+            ProseOutcome::Notes("- Faster search".into())
+        );
+        assert_eq!(
+            interpret("- Faster search\n- NO_USER_FACING_CHANGES"),
+            ProseOutcome::Notes("- Faster search".into())
+        );
+        // A bullet that merely mentions the token is kept.
+        let text = "- Explain NO_USER_FACING_CHANGES in the docs";
+        assert_eq!(interpret(text), ProseOutcome::Notes(text.into()));
+    }
 
     #[test]
     fn postprocess_trims_outer_whitespace() {

@@ -5,32 +5,40 @@
 //!
 //! A "voice" is the system prompt that drives the prose pass. The user
 //! supplies one of:
-//! - a bundled profile name (`terse`, `prose`, or the alias `default`) via
+//! - a bundled profile name (`terse`, `prose`, `simple`, or the alias `default`) via
 //!   `--voice <name>` / TOML `voice.profile` → loaded with [`load_bundled`]
 //! - a path via `--voice <FILE>` / TOML `voice.path` → loaded with
 //!   [`load_from_file`]
 //! - nothing → the bundled `terse` voice (the implicit default)
 //!
-//! Voice files are plain Markdown — no frontmatter, no metadata. The
-//! whole file body is used as the system prompt.
+//! Voice files are plain Markdown. An optional frontmatter block (see
+//! [`frontmatter`]) declares render defaults the voice carries — flat
+//! list, limits, plain text, section filters, fallback lines — which
+//! `[render]` config, env vars and flags override. Everything after it
+//! is the system prompt.
 //!
 //! Inline `--prompt` and TOML `voice.extra_instructions` are *not*
 //! applied here; they are appended at the call site (the prose pass) so
 //! the underlying voice stays cacheable on its own hash.
 
+pub mod frontmatter;
+
 use std::path::Path;
 
 use thiserror::Error;
+
+use crate::config::RenderConfig;
 
 /// Bundled voice contents. Embedded at compile time so a stripped
 /// chronikl binary can run without any voice file on disk.
 const TERSE_VOICE_MD: &str = include_str!("terse.md");
 const PROSE_VOICE_MD: &str = include_str!("prose.md");
+const SIMPLE_VOICE_MD: &str = include_str!("simple.md");
 
 /// Public list of bundled profile names, in display order. Used in error
 /// messages and `--help` text. Aliases (e.g. `default`) are *not*
 /// included.
-pub const BUNDLED_NAMES: &[&str] = &["terse", "prose"];
+pub const BUNDLED_NAMES: &[&str] = &["terse", "prose", "simple"];
 
 /// A voice — the system prompt used by the prose pass, plus enough
 /// metadata to identify it in audit logs and the run header.
@@ -45,6 +53,9 @@ pub struct Voice {
     /// Canonical bundled profile name (e.g. `"terse"`, `"prose"`) when
     /// loaded from a bundled profile. `None` for custom files.
     pub bundled_name: Option<&'static str>,
+    /// Render defaults from the voice's frontmatter. Empty for voices
+    /// without one (`terse`, `prose`, most custom files).
+    pub render: RenderConfig,
 }
 
 #[derive(Debug, Error)]
@@ -57,6 +68,8 @@ pub enum VoiceError {
     },
     #[error("voice file {path} is empty")]
     Empty { path: String },
+    #[error("invalid frontmatter in voice {path}: {message}")]
+    Frontmatter { path: String, message: String },
     #[error("unknown voice profile `{name}` (known: {})", known.join(", "))]
     UnknownProfile {
         name: String,
@@ -77,6 +90,7 @@ fn bundled_by_name(name: &str) -> Option<(&'static str, &'static str)> {
     match name {
         "default" | "terse" => Some(("terse", TERSE_VOICE_MD)),
         "prose" => Some(("prose", PROSE_VOICE_MD)),
+        "simple" => Some(("simple", SIMPLE_VOICE_MD)),
         _ => None,
     }
 }
@@ -86,11 +100,15 @@ fn bundled_by_name(name: &str) -> Option<(&'static str, &'static str)> {
 /// [`VoiceError::UnknownProfile`] for anything else.
 pub fn load_bundled(name: &str) -> Result<Voice, VoiceError> {
     match bundled_by_name(name) {
-        Some((canonical, body)) => Ok(Voice {
-            system_prompt: body.trim().to_string(),
-            is_custom: false,
-            bundled_name: Some(canonical),
-        }),
+        Some((canonical, raw)) => {
+            let (render, body) = parse_voice(raw, canonical)?;
+            Ok(Voice {
+                system_prompt: body,
+                is_custom: false,
+                bundled_name: Some(canonical),
+                render,
+            })
+        }
         None => Err(VoiceError::UnknownProfile {
             name: name.to_string(),
             known: BUNDLED_NAMES,
@@ -105,17 +123,33 @@ pub fn load_from_file(path: &Path) -> Result<Voice, VoiceError> {
         path: path.display().to_string(),
         source: e,
     })?;
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Err(VoiceError::Empty {
-            path: path.display().to_string(),
-        });
-    }
+    let (render, body) = parse_voice(&raw, &path.display().to_string())?;
     Ok(Voice {
-        system_prompt: trimmed.to_string(),
+        system_prompt: body,
         is_custom: true,
         bundled_name: None,
+        render,
     })
+}
+
+/// Split a voice into its frontmatter render defaults and its trimmed
+/// body. Errors on bad frontmatter or an empty body.
+fn parse_voice(raw: &str, path: &str) -> Result<(RenderConfig, String), VoiceError> {
+    let (block, body) = frontmatter::split(raw);
+    let render = match block {
+        Some(block) => frontmatter::parse(block).map_err(|message| VoiceError::Frontmatter {
+            path: path.to_string(),
+            message,
+        })?,
+        None => RenderConfig::default(),
+    };
+    let body = body.trim();
+    if body.is_empty() {
+        return Err(VoiceError::Empty {
+            path: path.to_string(),
+        });
+    }
+    Ok((render, body.to_string()))
 }
 
 /// Resolve the voice for a run from the layered inputs.
@@ -172,6 +206,70 @@ mod tests {
     }
 
     #[test]
+    fn bundled_simple_carries_render_defaults() {
+        let v = load_bundled("simple").unwrap();
+        assert!(!v.is_custom);
+        assert_eq!(v.bundled_name, Some("simple"));
+        assert!(v.system_prompt.contains("What's new"));
+        // The frontmatter is not part of the prompt.
+        assert!(!v.system_prompt.starts_with("---"));
+        assert!(!v.system_prompt.contains("exclude_sections"));
+        assert_eq!(v.render.headings, Some(false));
+        assert_eq!(v.render.footer, Some(false));
+        assert_eq!(v.render.user_facing, Some(true));
+        assert_eq!(v.render.format, Some(crate::models::TextFormat::Plain));
+        assert!(v.render.max_bullets.is_some());
+        assert!(v.render.max_chars.is_some());
+        let excluded = v.render.exclude_sections.clone().unwrap();
+        for s in ["docs", "tests", "ci", "build", "chore", "refactor"] {
+            assert!(excluded.iter().any(|e| e == s), "{s}");
+        }
+    }
+
+    #[test]
+    fn terse_and_prose_carry_no_render_defaults() {
+        for name in ["terse", "prose", "default"] {
+            assert_eq!(load_bundled(name).unwrap().render, RenderConfig::default());
+        }
+    }
+
+    #[test]
+    fn custom_voice_frontmatter_is_parsed_and_stripped() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("store.md");
+        std::fs::write(
+            &path,
+            "---\nheadings: false\nmax_chars: 450\nfallback_line: Small fixes.\n---\n\nWrite for testers.\n",
+        )
+        .unwrap();
+        let v = load_from_file(&path).unwrap();
+        assert_eq!(v.system_prompt, "Write for testers.");
+        assert_eq!(v.render.headings, Some(false));
+        assert_eq!(v.render.max_chars, Some(450));
+        assert_eq!(v.render.fallback_line.as_deref(), Some("Small fixes."));
+    }
+
+    #[test]
+    fn custom_voice_with_bad_frontmatter_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.md");
+        std::fs::write(&path, "---\nheading: false\n---\nBody\n").unwrap();
+        let err = load_from_file(&path).unwrap_err();
+        assert!(matches!(err, VoiceError::Frontmatter { .. }), "{err}");
+    }
+
+    #[test]
+    fn frontmatter_only_voice_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fm.md");
+        std::fs::write(&path, "---\nheadings: false\n---\n\n").unwrap();
+        assert!(matches!(
+            load_from_file(&path).unwrap_err(),
+            VoiceError::Empty { .. }
+        ));
+    }
+
+    #[test]
     fn default_alias_resolves_to_terse() {
         let v = load_bundled("default").unwrap();
         assert_eq!(v.bundled_name, Some("terse"));
@@ -196,6 +294,7 @@ mod tests {
                 assert_eq!(name, "operatic");
                 assert!(known.contains(&"terse"));
                 assert!(known.contains(&"prose"));
+                assert!(known.contains(&"simple"));
             }
             other => panic!("expected UnknownProfile, got {other:?}"),
         }

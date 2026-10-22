@@ -5,8 +5,10 @@
 //! structured listing of the classified commits the model should turn
 //! into prose.
 
+use crate::constants::NOTHING_USER_FACING_TOKEN;
 use crate::models::{
-    Classified, ClassifiedCommit, MergeStyle, ReleaseKind, VersionBump, VersionScheme,
+    Classified, ClassifiedCommit, MergeStyle, ReleaseKind, RenderSettings, TextFormat, VersionBump,
+    VersionScheme,
 };
 use crate::project::ProjectContext;
 use crate::voice::Voice;
@@ -17,6 +19,16 @@ use crate::voice::Voice;
 /// `extra_instructions` typically comes from `voice.extra_instructions`
 /// in the TOML config. `inline_prompt` is the `--prompt "<TEXT>"` CLI
 /// flag — applied last so a one-shot override always wins.
+///
+/// `render` decides two more addenda: user-facing guidance when
+/// `user_facing` is on, and an "Output format" section whenever
+/// the run asks for a shape other than sectioned Markdown (flat list,
+/// limits, plain text, no footer). The format section restates exactly
+/// what the user message asks for, so the two never disagree. The
+/// bump and prerelease framings describe a sectioned developer
+/// document (overview paragraph, migration notes), so they're only
+/// added for developer notes with headings on.
+#[allow(clippy::too_many_arguments)]
 pub fn build_system_prompt(
     voice: &Voice,
     extra_instructions: Option<&str>,
@@ -24,20 +36,33 @@ pub fn build_system_prompt(
     release_kind: &ReleaseKind,
     bump: VersionBump,
     scheme: Option<VersionScheme>,
+    render: &RenderSettings,
 ) -> String {
     let mut out = voice.system_prompt.clone();
 
     // Auto-addenda are appended *between* the voice and the
     // user-supplied instructions so the user's `--prompt` always wins
     // when there's a conflict (e.g. "ignore the framing, this is
-    // internal"). Order: voice → bump → prerelease → user extras.
-    if let Some(addendum) = crate::prompts::bump_addendum(bump, scheme) {
-        out.push_str("\n\n");
-        out.push_str(addendum);
+    // internal"). Order: voice → bump → prerelease → user-facing →
+    // output format → user extras.
+    let developer_document = !render.user_facing && render.headings;
+    if developer_document {
+        if let Some(addendum) = crate::prompts::bump_addendum(bump, scheme) {
+            out.push_str("\n\n");
+            out.push_str(addendum);
+        }
+        if let ReleaseKind::Prerelease { label } = release_kind {
+            out.push_str("\n\n");
+            out.push_str(&crate::prompts::prerelease_addendum(label));
+        }
     }
-    if let ReleaseKind::Prerelease { label } = release_kind {
+    if render.user_facing {
         out.push_str("\n\n");
-        out.push_str(&crate::prompts::prerelease_addendum(label));
+        out.push_str(crate::prompts::USER_FACING.trim());
+    }
+    if let Some(format) = format_addendum(render) {
+        out.push_str("\n\n");
+        out.push_str(&format);
     }
 
     for piece in [extra_instructions, inline_prompt].into_iter().flatten() {
@@ -48,6 +73,74 @@ pub fn build_system_prompt(
         }
     }
     out
+}
+
+/// The format rules a run's settings impose, one per line, worded the
+/// same way for the system prompt and the user message. Empty for the
+/// default shape (sectioned Markdown, no limits, footer on).
+fn format_rules(render: &RenderSettings) -> Vec<String> {
+    let mut rules = Vec::new();
+    if !render.headings {
+        rules.push(
+            "Write one flat list of bullets, each starting with `- `, most noticeable change \
+             first. No headings, no section names, no overview paragraph and no closing line."
+                .to_string(),
+        );
+    } else if render.format == TextFormat::Plain {
+        rules.push(
+            "Put each section name on its own line with no `#` marks, followed by its bullets, \
+             each starting with `- `. Skip empty sections."
+                .to_string(),
+        );
+    }
+    if let Some(n) = render.max_bullets {
+        rules.push(format!(
+            "Write at most {n} bullet{}. Merge or drop the least noticeable items to fit.",
+            if n == 1 { "" } else { "s" }
+        ));
+    }
+    if let Some(n) = render.max_chars {
+        rules.push(format!(
+            "Keep the whole text within {n} characters, counting bullet markers and line \
+             breaks. Prefer fewer, shorter bullets; anything past the limit is cut at whole \
+             bullets."
+        ));
+    }
+    if render.format == TextFormat::Plain {
+        rules.push(
+            "Write plain text, not Markdown: no bold, italics, code spans, links or `#` headings."
+                .to_string(),
+        );
+    }
+    if !render.footer {
+        rules.push("Don't add a changelog link, a compare link or any other trailer.".to_string());
+    }
+    if render.user_facing {
+        rules.push(format!(
+            "If nothing in the list is something a user would notice, output exactly \
+             `{NOTHING_USER_FACING_TOKEN}` and nothing else."
+        ));
+    }
+    rules
+}
+
+/// System-prompt section stating the run's format rules, or `None` for
+/// the default shape.
+fn format_addendum(render: &RenderSettings) -> Option<String> {
+    let rules = format_rules(render);
+    if rules.is_empty() {
+        return None;
+    }
+    let mut out = String::from(
+        "# Output format\n\nThese rules come from this run's settings and take precedence over \
+         any document-shape guidance above:\n\n",
+    );
+    for rule in rules {
+        out.push_str("- ");
+        out.push_str(&rule);
+        out.push('\n');
+    }
+    Some(out.trim_end().to_string())
 }
 
 /// Hard cap on commit-body characters under `rich_context`. Matches
@@ -94,6 +187,7 @@ pub fn build_user_prompt(
     scheme: Option<VersionScheme>,
     rich_context: bool,
     project: &ProjectContext,
+    render: &RenderSettings,
 ) -> String {
     let mut out = String::new();
     push_project_context(&mut out, project);
@@ -138,22 +232,68 @@ pub fn build_user_prompt(
         return out;
     }
 
-    out.push_str("Commits, grouped by section:\n\n");
+    if render.user_facing {
+        out.push_str("Audience: people who use the product, not its developers.\n\n");
+    }
+
+    // With headings on, the groups are written as Markdown headers the
+    // model reuses. With headings off they're plain labels, and the
+    // closing instruction says not to reproduce them.
+    if render.headings {
+        out.push_str("Commits, grouped by section:\n\n");
+    } else {
+        out.push_str("Commits, grouped by kind (the kinds are context, not headings):\n\n");
+    }
     for (section, entries) in classified.group_by_section() {
-        out.push_str(&format!("## {}\n", section.header()));
+        if render.headings {
+            out.push_str(&format!("## {}\n", section.header()));
+        } else {
+            out.push_str(&format!("{}:\n", section.header()));
+        }
         for entry in entries {
             push_entry(&mut out, entry, rich_context);
         }
         out.push('\n');
     }
 
+    let rules = format_rules(render);
+    if rules.is_empty() {
+        out.push_str(
+            "Write release notes in your configured voice. Output GitHub-flavored \
+             Markdown only. Use the section names above as `### Section Name` \
+             headers and skip empty sections. Do not invent entries that aren't \
+             in the list above. Do not include a top-level title or a \
+             `## What's Changed` wrapper.\n",
+        );
+        return out;
+    }
+
+    out.push_str("Write release notes in your configured voice.");
+    if render.headings && render.format == TextFormat::Markdown {
+        out.push_str(
+            " Output GitHub-flavored Markdown. Use the section names above as \
+             `### Section Name` headers and skip empty sections.",
+        );
+    }
     out.push_str(
-        "Write release notes in your configured voice. Output GitHub-flavored \
-         Markdown only. Use the section names above as `### Section Name` \
-         headers and skip empty sections. Do not invent entries that aren't \
-         in the list above. Do not include a top-level title or a \
-         `## What's Changed` wrapper.\n",
+        " Do not invent entries that aren't in the list above. Do not include \
+         a top-level title.",
     );
+    if render.user_facing {
+        out.push_str(
+            " Leave out items that are internal to the project's development even \
+             when they are listed above (tests, docs, CI, builds, tooling, \
+             refactors, dependency updates) and features only staff, testers or \
+             app-store reviewers use, and describe the rest in plain words an \
+             ordinary user understands.",
+        );
+    }
+    out.push_str("\n\n");
+    for rule in rules {
+        out.push_str("- ");
+        out.push_str(&rule);
+        out.push('\n');
+    }
     out
 }
 
@@ -249,6 +389,7 @@ mod tests {
             system_prompt: body.to_string(),
             is_custom: false,
             bundled_name: None,
+            render: Default::default(),
         }
     }
 
@@ -288,7 +429,8 @@ mod tests {
                 None,
                 &ReleaseKind::Stable,
                 VersionBump::Unknown,
-                None
+                None,
+                &RenderSettings::default()
             ),
             "be terse"
         );
@@ -304,6 +446,7 @@ mod tests {
             &ReleaseKind::Stable,
             VersionBump::Unknown,
             None,
+            &RenderSettings::default(),
         );
         assert!(out.starts_with("be terse"));
         assert!(out.contains("mention release manager"));
@@ -323,6 +466,7 @@ mod tests {
             &ReleaseKind::Stable,
             VersionBump::Unknown,
             None,
+            &RenderSettings::default(),
         );
         assert_eq!(out, "be terse");
     }
@@ -339,6 +483,7 @@ mod tests {
             },
             VersionBump::Unknown,
             None,
+            &RenderSettings::default(),
         );
         assert!(out.starts_with("be terse"));
         assert!(out.contains("prerelease (rc.1)"));
@@ -357,6 +502,7 @@ mod tests {
             },
             VersionBump::Unknown,
             None,
+            &RenderSettings::default(),
         );
         let i_voice = out.find("voice body").unwrap();
         let i_pre = out.find("prerelease").unwrap();
@@ -377,6 +523,7 @@ mod tests {
             &ReleaseKind::Stable,
             VersionBump::Major,
             None,
+            &RenderSettings::default(),
         );
         assert!(major.contains("major release"));
         assert!(major.contains("breaking changes"));
@@ -388,6 +535,7 @@ mod tests {
             &ReleaseKind::Stable,
             VersionBump::Minor,
             None,
+            &RenderSettings::default(),
         );
         assert!(minor.contains("minor release"));
         assert!(minor.contains("new features"));
@@ -399,6 +547,7 @@ mod tests {
             &ReleaseKind::Stable,
             VersionBump::Patch,
             None,
+            &RenderSettings::default(),
         );
         assert!(patch.contains("patch release"));
 
@@ -409,6 +558,7 @@ mod tests {
             &ReleaseKind::Stable,
             VersionBump::Initial,
             None,
+            &RenderSettings::default(),
         );
         assert!(initial.contains("initial public release"));
 
@@ -419,6 +569,7 @@ mod tests {
             &ReleaseKind::Stable,
             VersionBump::Unknown,
             None,
+            &RenderSettings::default(),
         );
         assert_eq!(unknown, "v"); // no bump addendum
     }
@@ -436,6 +587,7 @@ mod tests {
             },
             VersionBump::Major,
             None,
+            &RenderSettings::default(),
         );
         let i_voice = out.find("v").unwrap();
         let i_bump = out.find("major release").unwrap();
@@ -454,6 +606,7 @@ mod tests {
             &ReleaseKind::Stable,
             VersionBump::Major,
             Some(VersionScheme::Calver),
+            &RenderSettings::default(),
         );
         // CalVer year-line — should mention "year-line", *not* the
         // semver-major "breaking changes".
@@ -471,6 +624,7 @@ mod tests {
             &ReleaseKind::Stable,
             VersionBump::Major,
             Some(VersionScheme::Semver),
+            &RenderSettings::default(),
         );
         assert!(out.contains("breaking changes and migration"));
         assert!(!out.contains("year-line"));
@@ -500,6 +654,7 @@ mod tests {
             None,
             false,
             &ProjectContext::default(),
+            &RenderSettings::default(),
         );
         assert!(prompt.contains("v0.1.0..HEAD"));
         assert!(prompt.contains("squash"));
@@ -533,6 +688,7 @@ mod tests {
             None,
             false,
             &ProjectContext::default(),
+            &RenderSettings::default(),
         );
         assert!(prompt.contains("prerelease (rc.1)"));
         assert!(prompt.contains("Version bump: major"));
@@ -596,6 +752,7 @@ mod tests {
             None,
             false,
             &ProjectContext::default(),
+            &RenderSettings::default(),
         );
         assert!(prompt.contains("(#42)"));
         assert!(prompt.contains("PR #42: Add SSO support"));
@@ -619,6 +776,7 @@ mod tests {
             None,
             false,
             &ProjectContext::default(),
+            &RenderSettings::default(),
         );
         assert!(prompt.contains("initial-release announcement"));
         assert!(prompt.contains("no prior version"));
@@ -644,6 +802,7 @@ mod tests {
             None,
             false,
             &ProjectContext::default(),
+            &RenderSettings::default(),
         );
         assert!(prompt.contains("Generate release notes for the range"));
         assert!(!prompt.contains("initial-release announcement"));
@@ -662,6 +821,7 @@ mod tests {
             None,
             false,
             &ProjectContext::default(),
+            &RenderSettings::default(),
         );
         assert!(prompt.contains("No commits in range"));
     }
@@ -694,6 +854,7 @@ mod tests {
             None,
             false,
             &ProjectContext::default(),
+            &RenderSettings::default(),
         );
         assert!(!prompt.contains("commit-body:"));
         assert!(!prompt.contains("pr-body:"));
@@ -728,6 +889,7 @@ mod tests {
             None,
             true,
             &ProjectContext::default(),
+            &RenderSettings::default(),
         );
         assert!(prompt.contains("commit-body:"));
         assert!(prompt.contains("A meaningful commit body explaining the change."));
@@ -751,6 +913,7 @@ mod tests {
             None,
             true,
             &ProjectContext::default(),
+            &RenderSettings::default(),
         );
         assert!(!prompt.contains("commit-body:"));
         assert!(!prompt.contains("pr-body:"));
@@ -776,6 +939,7 @@ mod tests {
             None,
             true,
             &ProjectContext::default(),
+            &RenderSettings::default(),
         );
         // The body block exists, contains an ellipsis, and the prompt as
         // a whole stays well below 2× the cap (i.e. truncation actually
@@ -806,6 +970,7 @@ mod tests {
             None,
             false,
             &project,
+            &RenderSettings::default(),
         );
         // Project block must come before the range opener so the model
         // reads "what this project is" first.
@@ -835,6 +1000,7 @@ mod tests {
             None,
             false,
             &ProjectContext::default(),
+            &RenderSettings::default(),
         );
         assert!(!prompt.contains("Project context:"));
         // The range opener should still be the first line.
@@ -858,8 +1024,172 @@ mod tests {
             None,
             false,
             &ProjectContext::default(),
+            &RenderSettings::default(),
         );
         assert!(prompt.contains("`HEAD`"));
         assert!(!prompt.contains(".."));
+    }
+
+    fn end_user_render() -> RenderSettings {
+        RenderSettings {
+            user_facing: true,
+            headings: false,
+            footer: false,
+            max_bullets: Some(5),
+            max_chars: Some(450),
+            format: TextFormat::Plain,
+            ..RenderSettings::default()
+        }
+    }
+
+    fn two_sections() -> Classified {
+        Classified(vec![
+            entry(
+                "add search",
+                Section::Features,
+                ClassificationSource::Conventional,
+            ),
+            entry(
+                "fix crash on start",
+                Section::BugFixes,
+                ClassificationSource::Conventional,
+            ),
+        ])
+    }
+
+    fn user_prompt(render: &RenderSettings) -> String {
+        build_user_prompt(
+            &two_sections(),
+            Some("v1.0.0"),
+            "v1.1.0",
+            MergeStyle::Rebase,
+            &ReleaseKind::Stable,
+            VersionBump::Minor,
+            None,
+            false,
+            &ProjectContext::default(),
+            render,
+        )
+    }
+
+    fn system_prompt(render: &RenderSettings) -> String {
+        build_system_prompt(
+            &voice("voice body"),
+            None,
+            Some("inline last"),
+            &ReleaseKind::Prerelease {
+                label: "rc.1".into(),
+            },
+            VersionBump::Minor,
+            None,
+            render,
+        )
+    }
+
+    #[test]
+    fn default_render_keeps_the_sectioned_instruction() {
+        let prompt = user_prompt(&RenderSettings::default());
+        assert!(prompt.contains("## Features\n- add search"));
+        assert!(prompt.contains("`### Section Name`"));
+        assert!(!prompt.contains("flat list"));
+        let system = system_prompt(&RenderSettings::default());
+        assert!(!system.contains("# Output format"));
+        assert!(system.contains("minor release"));
+        assert!(system.contains("prerelease (rc.1)"));
+    }
+
+    #[test]
+    fn headings_off_never_asks_for_section_headers() {
+        let render = RenderSettings {
+            headings: false,
+            ..RenderSettings::default()
+        };
+        let prompt = user_prompt(&render);
+        assert!(!prompt.contains("### Section Name"), "{prompt}");
+        assert!(!prompt.contains("## Features"), "{prompt}");
+        assert!(prompt.contains("Features:\n- add search"));
+        assert!(prompt.contains("one flat list of bullets"));
+        assert!(prompt.contains("No headings"));
+        // The system prompt states the same rule and drops the
+        // document-shaped framings.
+        let system = system_prompt(&render);
+        assert!(system.contains("# Output format"));
+        assert!(system.contains("one flat list of bullets"));
+        assert!(!system.contains("minor release"));
+        assert!(!system.contains("Prerelease Notes"));
+    }
+
+    #[test]
+    fn limits_and_format_appear_in_both_prompts() {
+        let render = end_user_render();
+        let prompt = user_prompt(&render);
+        let system = system_prompt(&render);
+        for text in [&prompt, &system] {
+            assert!(text.contains("at most 5 bullets"), "{text}");
+            assert!(text.contains("within 450 characters"), "{text}");
+            assert!(text.contains("plain text, not Markdown"), "{text}");
+            assert!(text.contains("changelog link"), "{text}");
+        }
+    }
+
+    #[test]
+    fn user_facing_notes_filter_in_the_prose_pass() {
+        let render = end_user_render();
+        let prompt = user_prompt(&render);
+        assert!(prompt.contains("Audience: people who use the product"));
+        assert!(prompt.contains("Leave out items that are internal"));
+        assert!(prompt.contains("even when"));
+        let system = system_prompt(&render);
+        assert!(system.contains("# User-facing notes"));
+        assert!(system.contains("even when the input lists it as a"));
+        for text in [&prompt, &system] {
+            assert!(text.contains(NOTHING_USER_FACING_TOKEN), "{text}");
+        }
+        // The bump and prerelease framings are for developer documents.
+        assert!(!system.contains("minor release"));
+        // User extras still come last.
+        let i_user_facing = system.find("# User-facing notes").unwrap();
+        let i_format = system.find("# Output format").unwrap();
+        let i_inline = system.find("inline last").unwrap();
+        assert!(i_user_facing < i_format && i_format < i_inline);
+    }
+
+    #[test]
+    fn single_bullet_limit_reads_naturally() {
+        let render = RenderSettings {
+            max_bullets: Some(1),
+            ..RenderSettings::default()
+        };
+        assert!(user_prompt(&render).contains("at most 1 bullet."));
+    }
+
+    #[test]
+    fn plain_with_headings_asks_for_bare_section_names() {
+        let render = RenderSettings {
+            format: TextFormat::Plain,
+            ..RenderSettings::default()
+        };
+        let prompt = user_prompt(&render);
+        assert!(prompt.contains("section name on its own line with no `#` marks"));
+        assert!(!prompt.contains("`### Section Name`"));
+    }
+
+    #[test]
+    fn simple_voice_prompts_follow_its_frontmatter_and_terse_stays_sectioned() {
+        let cfg = crate::config::Config::default();
+        let simple = crate::voice::load_bundled("simple").unwrap();
+        let render = cfg.render_settings(&simple.render).unwrap();
+        let prompt = user_prompt(&render);
+        assert!(!prompt.contains("### Section Name"), "{prompt}");
+        assert!(prompt.contains("one flat list of bullets"));
+        assert!(prompt.contains("plain text, not Markdown"));
+        assert!(prompt.contains(NOTHING_USER_FACING_TOKEN));
+
+        let terse = crate::voice::load_bundled("terse").unwrap();
+        let render = cfg.render_settings(&terse.render).unwrap();
+        assert_eq!(render, RenderSettings::default());
+        let prompt = user_prompt(&render);
+        assert!(prompt.contains("`### Section Name`"));
+        assert!(!prompt.contains(NOTHING_USER_FACING_TOKEN));
     }
 }

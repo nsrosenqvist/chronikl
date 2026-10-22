@@ -9,6 +9,7 @@
 mod classification;
 mod pr;
 mod release;
+mod render;
 mod temperature;
 mod tokens;
 
@@ -41,6 +42,7 @@ impl EnrichedCommit {
     }
 }
 pub use release::{ParsedVersion, ReleaseKind, VersionBump, VersionScheme};
+pub use render::{FallbackKind, FallbackLines, RenderSettings, TextFormat};
 pub use temperature::{ParseTemperatureError, Temperature};
 pub use tokens::TokenUsage;
 

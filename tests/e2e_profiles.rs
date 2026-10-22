@@ -391,6 +391,7 @@ async fn prose_pass_writes_grouped_markdown() {
             to_ref: "HEAD",
             rich_context: false,
             project_context: &ProjectContext::default(),
+            render: &chronikl::models::RenderSettings::default(),
         },
         &provider as &dyn NotesProvider,
         &audit,

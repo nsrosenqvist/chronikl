@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 use crate::constants::FULL_VERSION;
-use crate::models::Temperature;
+use crate::models::{Temperature, TextFormat};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -49,7 +49,7 @@ pub struct GenerateArgs {
     #[arg(long, env = "CHRONIKL_NO_PR_ENRICHMENT")]
     pub no_pr_enrichment: bool,
 
-    /// Voice profile name (e.g. `terse`, `prose`) or path to a custom
+    /// Voice profile name (`terse`, `prose`, `simple`) or path to a custom
     /// voice markdown file. Bundled-profile names win over treating the
     /// value as a path. Overrides `voice.path` / `voice.profile` from
     /// TOML. When unset, the bundled `terse` voice is used.
@@ -104,11 +104,101 @@ pub struct GenerateArgs {
     #[arg(long, value_name = "FILE", env = "CHRONIKL_AUDIT_LOG")]
     pub audit_log: Option<PathBuf>,
 
+    #[command(flatten)]
+    pub render: RenderArgs,
+
     /// Sampling temperature for every LLM call: a number (0 to 2), or
     /// `none` to send no temperature at all. Defaults to 0. A model
     /// that rejects the parameter gets the call retried without it.
     #[arg(long, value_name = "N|none")]
     pub temperature: Option<Temperature>,
+
+    /// Exit non-zero, writing nothing, when an LLM pass fails or no
+    /// provider is usable and the notes would otherwise fall back to
+    /// the deterministic renderer. Ignored with `--no-llm`.
+    #[arg(long)]
+    pub strict: bool,
+}
+
+/// Rendering flags, shared by the main command and `debug prompts` so
+/// the dumped prompts match what a run would send.
+#[derive(Args, Debug, Clone, Default)]
+pub struct RenderArgs {
+    /// Section headings on or off. `--headings=false` renders one flat
+    /// bullet list.
+    #[arg(long, value_name = "BOOL", num_args = 0..=1, default_missing_value = "true")]
+    pub headings: Option<bool>,
+
+    /// Keep only these sections (comma-separated ids, e.g.
+    /// `features,fixes`).
+    #[arg(long, value_name = "IDS", value_delimiter = ',')]
+    pub include_sections: Option<Vec<String>>,
+
+    /// Drop these sections before the prose pass (comma-separated ids,
+    /// e.g. `tests,docs,ci`).
+    #[arg(long, value_name = "IDS", value_delimiter = ',')]
+    pub exclude_sections: Option<Vec<String>>,
+
+    /// Keep at most this many bullets, cut at whole bullets in output
+    /// order.
+    #[arg(long, value_name = "N")]
+    pub max_bullets: Option<usize>,
+
+    /// Keep the whole output within this many characters, cut at whole
+    /// bullets.
+    #[arg(long, value_name = "N")]
+    pub max_chars: Option<usize>,
+
+    /// The "Full Changelog" compare-link footer on or off.
+    #[arg(long, value_name = "BOOL", num_args = 0..=1, default_missing_value = "true")]
+    pub footer: Option<bool>,
+
+    /// Output text format: `markdown` (default) or `plain`.
+    #[arg(long, value_name = "FORMAT")]
+    pub format: Option<TextFormat>,
+
+    /// Notes for the product's users: keep only changes they'd notice,
+    /// and write a fallback line when nothing is user-facing. The
+    /// `simple` voice turns this on.
+    #[arg(long, value_name = "BOOL", num_args = 0..=1, default_missing_value = "true")]
+    pub user_facing: Option<bool>,
+
+    /// "Nothing user-facing" line for any range (overrides the built-in
+    /// lines; a per-kind line below wins over it).
+    #[arg(long, value_name = "TEXT")]
+    pub fallback_line: Option<String>,
+
+    /// "Nothing user-facing" line for a range with bug fixes.
+    #[arg(long, value_name = "TEXT")]
+    pub fallback_fixes: Option<String>,
+
+    /// "Nothing user-facing" line for a range with performance work.
+    #[arg(long, value_name = "TEXT")]
+    pub fallback_performance: Option<String>,
+
+    /// "Nothing user-facing" line for any other range.
+    #[arg(long, value_name = "TEXT")]
+    pub fallback_other: Option<String>,
+}
+
+impl RenderArgs {
+    /// Fold these flags over the `[render]` config (flags win).
+    pub fn apply_to(&self, render: &mut crate::config::RenderConfig) {
+        render.overlay(crate::config::RenderConfig {
+            headings: self.headings,
+            include_sections: self.include_sections.clone(),
+            exclude_sections: self.exclude_sections.clone(),
+            max_bullets: self.max_bullets,
+            max_chars: self.max_chars,
+            footer: self.footer,
+            format: self.format,
+            user_facing: self.user_facing,
+            fallback_line: self.fallback_line.clone(),
+            fallback_fixes: self.fallback_fixes.clone(),
+            fallback_performance: self.fallback_performance.clone(),
+            fallback_other: self.fallback_other.clone(),
+        });
+    }
 }
 
 #[derive(Subcommand, Debug)]
@@ -189,7 +279,7 @@ pub enum DebugCommand {
         #[arg(long, value_name = "PATH")]
         repo: Option<PathBuf>,
 
-        /// Voice profile name (`terse`, `prose`) or path to a custom
+        /// Voice profile name (`terse`, `prose`, `simple`) or path to a custom
         /// voice markdown file (overrides TOML/default).
         #[arg(long, value_name = "NAME_OR_FILE")]
         voice: Option<String>,
@@ -208,6 +298,9 @@ pub enum DebugCommand {
         /// Skip PR enrichment (offline-friendly).
         #[arg(long)]
         no_pr_enrichment: bool,
+
+        #[command(flatten)]
+        render: Box<RenderArgs>,
     },
 }
 

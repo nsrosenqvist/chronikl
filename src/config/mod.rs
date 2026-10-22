@@ -4,5 +4,5 @@ mod loader;
 
 pub use loader::{
     Config, ConfigError, LadderConfig, OutputConfig, OutputFormat, ProjectConfig, ProviderConfig,
-    VoiceConfig,
+    RenderConfig, VoiceConfig,
 };

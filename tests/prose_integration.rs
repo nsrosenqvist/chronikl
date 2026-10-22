@@ -79,6 +79,7 @@ async fn prose_pass_returns_model_markdown_and_records_audit() {
         system_prompt: "Write release notes like a brisk professional.".into(),
         is_custom: true,
         bundled_name: None,
+        render: Default::default(),
     };
 
     let canned = "### Breaking Changes\n\n- Remove legacy v1 API.\n\n### Features\n\n- Add SSO login support (#42).\n";
@@ -100,6 +101,7 @@ async fn prose_pass_returns_model_markdown_and_records_audit() {
             to_ref: "HEAD",
             rich_context: false,
             project_context: &ProjectContext::default(),
+            render: &chronikl::models::RenderSettings::default(),
         },
         &provider as &dyn NotesProvider,
         &audit,
@@ -160,6 +162,7 @@ async fn prose_pass_strips_markdown_code_fence_wrapper() {
         system_prompt: "x".into(),
         is_custom: false,
         bundled_name: Some("terse"),
+        render: Default::default(),
     };
     let canned = "```markdown\n### Features\n\n- Add x.\n```";
     let provider = MockProvider::returning(canned);
@@ -179,6 +182,7 @@ async fn prose_pass_strips_markdown_code_fence_wrapper() {
             to_ref: "HEAD",
             rich_context: false,
             project_context: &ProjectContext::default(),
+            render: &chronikl::models::RenderSettings::default(),
         },
         &provider as &dyn NotesProvider,
         &audit,
@@ -204,6 +208,7 @@ async fn prose_pass_propagates_provider_error() {
         system_prompt: "x".into(),
         is_custom: false,
         bundled_name: Some("terse"),
+        render: Default::default(),
     };
     let provider = MockProvider::failing("simulated 500");
     let audit = AuditSink::new();
@@ -222,6 +227,7 @@ async fn prose_pass_propagates_provider_error() {
             to_ref: "HEAD",
             rich_context: false,
             project_context: &ProjectContext::default(),
+            render: &chronikl::models::RenderSettings::default(),
         },
         &provider as &dyn NotesProvider,
         &audit,

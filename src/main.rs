@@ -5,16 +5,18 @@ use std::sync::Arc;
 use clap::Parser;
 use colored::Colorize;
 
-use chronikl::audit::{AuditSink, ConfigSnapshot, RangeSnapshot};
+use chronikl::audit::{AuditSink, ConfigSnapshot, NotesSource, RangeSnapshot};
 use chronikl::cache::{ClassificationCache, NullCache, default_cache_root, disk::DiskCache};
-use chronikl::cli::{CacheCommand, Cli, Command, DebugCommand, GenerateArgs, RangeArgs};
+use chronikl::cli::{
+    CacheCommand, Cli, Command, DebugCommand, GenerateArgs, RangeArgs, RenderArgs,
+};
 use chronikl::config::Config;
 use chronikl::constants::{BUILD_DATE, FULL_VERSION, GIT_SHA, TARGET};
 use chronikl::enrichment;
 use chronikl::env::Env;
 use chronikl::git::{self, Range, merge_style};
 use chronikl::ladder::{tier0, tier1, tier2, tier3};
-use chronikl::models::Classified;
+use chronikl::models::{Classified, FallbackKind, RenderSettings, TextFormat};
 use chronikl::output::{self, RenderOptions};
 use chronikl::progress::{HeaderInfo, Progress, SummaryInfo};
 use chronikl::project::{self, ResolveInputs};
@@ -61,7 +63,19 @@ async fn run() -> anyhow::Result<()> {
             prompt,
             rich_context,
             no_pr_enrichment,
-        })) => debug_prompts(range, repo, voice, prompt, rich_context, no_pr_enrichment).await,
+            render,
+        })) => {
+            debug_prompts(DebugPromptsArgs {
+                range,
+                repo,
+                voice_arg: voice,
+                inline_prompt: prompt,
+                rich_context_arg: rich_context,
+                no_pr_enrichment,
+                render_args: *render,
+            })
+            .await
+        }
     }
 }
 
@@ -125,8 +139,12 @@ async fn generate(args: GenerateArgs) -> anyhow::Result<()> {
     let home = dirs::config_dir();
     let mut cfg = Config::load(&env, &repo, home.as_deref())?;
     // CLI flags sit on top of env and TOML.
+    args.render.apply_to(&mut cfg.render);
     if args.temperature.is_some() {
         cfg.provider.temperature = args.temperature;
+    }
+    if args.strict {
+        cfg.output.strict = Some(true);
     }
 
     let spec = args.range.to_spec();
@@ -141,12 +159,15 @@ async fn generate(args: GenerateArgs) -> anyhow::Result<()> {
 
     // Voice resolution — CLI `--voice` (name or path) wins over TOML
     // `[voice].path` which wins over TOML `[voice].profile`; otherwise
-    // bundled `terse`. Flagged in the audit and the run header.
+    // bundled `terse`. Flagged in the audit and the run header. The
+    // voice's frontmatter supplies render defaults under `[render]`,
+    // env vars and flags.
     let voice_obj = voice::resolve(
         args.voice.as_deref(),
         cfg.voice.path.as_deref(),
         cfg.voice.profile.as_deref(),
     )?;
+    let render = cfg.render_settings(&voice_obj.render)?;
 
     let release_label = match &release_kind {
         chronikl::models::ReleaseKind::Stable => "stable".to_string(),
@@ -234,6 +255,7 @@ async fn generate(args: GenerateArgs) -> anyhow::Result<()> {
     audit.set_voice_is_custom(voice_obj.is_custom);
     audit.set_voice_name(voice_obj.bundled_name.map(str::to_string));
     audit.set_config(snapshot_config(&cfg));
+    audit.set_render(render.clone());
     audit.set_range(snapshot_range(
         &range,
         &commits,
@@ -272,7 +294,10 @@ async fn generate(args: GenerateArgs) -> anyhow::Result<()> {
 
     // Tier 1+2 + prose pass: only if a provider is configured and the user
     // didn't opt out. Falls back to the deterministic renderer otherwise.
-    let prose_markdown = if should_run_llm(&args, &cfg) {
+    let notes = if args.no_llm {
+        progress.stage_skip("LLM pipeline", "disabled (--no-llm)");
+        Notes::Deterministic
+    } else if should_run_llm(&args, &cfg) {
         run_llm_pipeline(LlmPipelineCtx {
             args: &args,
             cfg: &cfg,
@@ -288,14 +313,13 @@ async fn generate(args: GenerateArgs) -> anyhow::Result<()> {
             cache: cache.as_ref(),
             model_for_cache: &model_for_cache,
             progress: &progress,
+            render: &render,
         })
         .await?
     } else {
-        progress.stage_skip(
-            "LLM pipeline",
-            "no provider configured (--no-llm or missing key)",
-        );
-        None
+        let reason = "no provider configured (missing provider, model or API key)";
+        progress.stage_skip("LLM pipeline", reason);
+        Notes::Fallback(reason.to_string())
     };
 
     // Compare-URL footer. When `origin` (or `upstream`) points at a
@@ -314,16 +338,66 @@ async fn generate(args: GenerateArgs) -> anyhow::Result<()> {
             )
         });
 
-    let markdown = match prose_markdown {
-        Some(md) => append_footer(md, compare_footer.as_deref()),
-        None => {
-            let mut opts = RenderOptions::for_release(&release_kind);
-            if opts.footer.is_none() {
-                opts.footer = compare_footer.clone();
-            }
-            output::render(&classified, &opts)
-        }
+    // User-facing notes never come out empty or as raw commit
+    // subjects: when nothing is user-facing, or the model couldn't be
+    // reached, they get the fallback line picked from the range's
+    // sections.
+    let filtered = render.filter(&classified);
+    let fallback_line = || render.fallback_line(&classified).to_string();
+    let nothing_user_facing = || NotesSource::NothingUserFacing {
+        fallback: FallbackKind::of(&classified),
     };
+    let deterministic_body = || {
+        let mut opts = RenderOptions::for_release(&release_kind);
+        opts.headings = render.headings;
+        if !render.headings {
+            opts.header = None;
+        }
+        output::render(&filtered, &opts)
+    };
+    let (body, notes_source) = match notes {
+        Notes::Model(md) => (md, NotesSource::Model),
+        Notes::NothingUserFacing => (fallback_line(), nothing_user_facing()),
+        Notes::Fallback(reason) if render.user_facing => {
+            (fallback_line(), NotesSource::Fallback { reason })
+        }
+        Notes::Fallback(reason) => (deterministic_body(), NotesSource::Fallback { reason }),
+        Notes::Deterministic if render.user_facing && filtered.is_empty() => {
+            (fallback_line(), nothing_user_facing())
+        }
+        Notes::Deterministic => (deterministic_body(), NotesSource::Deterministic),
+    };
+    if matches!(notes_source, NotesSource::NothingUserFacing { .. }) {
+        progress.info("nothing user-facing in this range; wrote the fallback line");
+    }
+    let shaped = output::shape(&body, compare_footer.as_deref(), &render);
+    if shaped.dropped_bullets > 0 {
+        progress.info(format!(
+            "dropped {} bullet(s) to fit the bullet/character limits",
+            shaped.dropped_bullets
+        ));
+    }
+    if !shaped.fits {
+        progress.stage_warn("Output", "nothing fits within max_chars");
+    }
+    let markdown = shaped.text;
+    audit.set_notes_source(notes_source.clone());
+
+    // `--strict`: a CI caller must be able to tell model-written notes
+    // from the deterministic fallback. Write the audit log (it says
+    // why), but no notes.
+    if cfg.strict()
+        && let NotesSource::Fallback { reason } = &notes_source
+    {
+        if let Some(audit_path) = &args.audit_log {
+            let document = audit.finalize(classified, markdown.clone());
+            std::fs::write(audit_path, serde_json::to_string_pretty(&document)?)?;
+        }
+        anyhow::bail!(
+            "strict mode: the notes would have fallen back to the deterministic renderer \
+             ({reason}); nothing was written"
+        );
+    }
 
     if let Some(path) = &args.output {
         std::fs::write(path, markdown.as_bytes())?;
@@ -383,22 +457,6 @@ fn snapshot_config(cfg: &Config) -> ConfigSnapshot {
     }
 }
 
-/// Append a footer line to a Markdown document, separated by a blank
-/// line. Idempotent when the footer is already present at the end —
-/// guards against the prose model occasionally including a changelog
-/// link itself.
-fn append_footer(markdown: String, footer: Option<&str>) -> String {
-    let Some(footer) = footer else {
-        return markdown;
-    };
-    let trimmed = markdown.trim_end();
-    if trimmed.contains(footer) {
-        // Model already produced an identical line; don't duplicate.
-        return format!("{trimmed}\n");
-    }
-    format!("{trimmed}\n\n{footer}\n")
-}
-
 /// Whether the LLM pipeline should run for this invocation. Returns
 /// `false` for `--no-llm`, missing provider config, or missing API key
 /// (Ollama is exempt — it runs locally without a key).
@@ -425,12 +483,28 @@ struct LlmPipelineCtx<'a> {
     cache: &'a dyn ClassificationCache,
     model_for_cache: &'a str,
     progress: &'a Progress,
+    render: &'a RenderSettings,
+}
+
+/// Where the run's notes come from.
+enum Notes {
+    /// The prose pass wrote them.
+    Model(String),
+    /// The LLM pipeline was wanted but couldn't produce prose (the
+    /// reason); the deterministic renderer writes them.
+    Fallback(String),
+    /// Nothing for the model to do (no commits, or `--no-llm`); the
+    /// deterministic renderer writes them.
+    Deterministic,
+    /// User-facing notes, and nothing in the range is user-facing (all
+    /// commits filtered out, or the model said so).
+    NothingUserFacing,
 }
 
 /// Run Tier 1, 2 (always), Tier 3 (opt-in), then the prose pass.
-/// Returns the prose-pass Markdown when it succeeds; `None` to fall
-/// back to the deterministic renderer.
-async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Option<String>> {
+/// Returns the prose-pass Markdown when it succeeds, or why the
+/// deterministic renderer has to stand in.
+async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Notes> {
     let LlmPipelineCtx {
         args,
         cfg,
@@ -446,13 +520,14 @@ async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Option<Stri
         cache,
         model_for_cache,
         progress,
+        render,
     } = ctx;
 
     let rig = match RigProvider::new(cfg.provider.clone()) {
         Ok(p) => Arc::new(p.with_audit_sink(audit.clone())),
         Err(e) => {
             progress.stage_warn("LLM pipeline", format!("provider not usable: {e}"));
-            return Ok(None);
+            return Ok(Notes::Fallback(format!("provider not usable: {e}")));
         }
     };
     let provider: Arc<dyn NotesProvider> = rig.clone();
@@ -555,9 +630,30 @@ async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Option<Stri
     }
 
     // ── Stage: Prose pass ──────────────────────────────────────────
-    if classified.is_empty() {
-        progress.stage_skip("Prose pass", "no commits to summarize");
-        return Ok(None);
+    // Commits in excluded sections never reach the prose model.
+    let included = render.filter(classified);
+    if included.is_empty() {
+        let why = if classified.is_empty() {
+            "no commits to summarize".to_string()
+        } else {
+            format!(
+                "all {} commit(s) are in excluded sections",
+                classified.len()
+            )
+        };
+        progress.stage_skip("Prose pass", why);
+        return Ok(if render.user_facing {
+            Notes::NothingUserFacing
+        } else {
+            Notes::Deterministic
+        });
+    }
+    if included.len() < classified.len() {
+        progress.info(format!(
+            "{} of {} commit(s) left out by section filters",
+            classified.len() - included.len(),
+            classified.len()
+        ));
     }
     let started = progress.stage_start();
     let project_context = project::resolve(
@@ -575,7 +671,7 @@ async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Option<Stri
         voice: voice_obj,
         extra_instructions: cfg.voice.extra_instructions.as_deref(),
         inline_prompt: args.prompt.as_deref(),
-        classified,
+        classified: &included,
         merge_style: detected_style,
         release_kind,
         version_bump,
@@ -584,6 +680,7 @@ async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Option<Stri
         to_ref: &range.to,
         rich_context: args.rich_context || cfg.voice.rich_context,
         project_context: &project_context,
+        render,
     };
     match prose::run(request, provider.as_ref(), audit).await {
         Ok(md) => {
@@ -592,14 +689,20 @@ async fn run_llm_pipeline(ctx: LlmPipelineCtx<'_>) -> anyhow::Result<Option<Stri
                 chronikl::progress::format_bytes(md.len()),
                 started,
             );
-            Ok(Some(md))
+            if !render.user_facing {
+                return Ok(Notes::Model(md));
+            }
+            Ok(match prose::interpret(&md) {
+                prose::ProseOutcome::Notes(md) => Notes::Model(md),
+                prose::ProseOutcome::NothingUserFacing => Notes::NothingUserFacing,
+            })
         }
         Err(e) => {
             progress.stage_warn(
                 "Prose pass",
                 format!("failed; falling back to deterministic render: {e}"),
             );
-            Ok(None)
+            Ok(Notes::Fallback(format!("prose pass failed: {e}")))
         }
     }
 }
@@ -645,25 +748,39 @@ async fn debug_classify(range: RangeArgs, repo: Option<PathBuf>) -> anyhow::Resu
     Ok(())
 }
 
-/// Dump the prompts each tier + the prose pass *would* construct for
-/// the given range. Doesn't call any LLM. Honours the configured voice
-/// + inline prompt. Helpful when debugging voice tweaks or prompt
-///   regressions.
-async fn debug_prompts(
+/// Inputs for [`debug_prompts`].
+struct DebugPromptsArgs {
     range: RangeArgs,
     repo: Option<PathBuf>,
     voice_arg: Option<String>,
     inline_prompt: Option<String>,
     rich_context_arg: bool,
     no_pr_enrichment: bool,
-) -> anyhow::Result<()> {
+    render_args: RenderArgs,
+}
+
+/// Dump the prompts each tier + the prose pass *would* construct for
+/// the given range. Doesn't call any LLM. Honours the configured voice
+/// + inline prompt and the render settings. Helpful when debugging
+///   voice tweaks or prompt regressions.
+async fn debug_prompts(a: DebugPromptsArgs) -> anyhow::Result<()> {
     use chronikl::ladder::{tier1, tier2, tier3};
     use chronikl::prose::prompts as prose_prompts;
 
+    let DebugPromptsArgs {
+        range,
+        repo,
+        voice_arg,
+        inline_prompt,
+        rich_context_arg,
+        no_pr_enrichment,
+        render_args,
+    } = a;
     let repo_path = repo.unwrap_or_else(|| std::env::current_dir().expect("cwd available"));
     let env = Env::real();
     let home = dirs::config_dir();
-    let cfg = Config::load(&env, &repo_path, home.as_deref())?;
+    let mut cfg = Config::load(&env, &repo_path, home.as_deref())?;
+    render_args.apply_to(&mut cfg.render);
 
     let spec = range.to_spec();
     let resolved = git::resolve_range(&repo_path, &spec).await?;
@@ -688,6 +805,7 @@ async fn debug_prompts(
         cfg.voice.path.as_deref(),
         cfg.voice.profile.as_deref(),
     )?;
+    let render = cfg.render_settings(&voice_obj.render)?;
 
     let classified = tier0::classify(&enriched);
 
@@ -715,6 +833,24 @@ async fn debug_prompts(
         version_scheme
             .map(|s| format!(" ({})", s.as_str()))
             .unwrap_or_default()
+    );
+    println!(
+        "Render: user-facing {}, headings {}, footer {}, format {}{}{}",
+        if render.user_facing { "on" } else { "off" },
+        if render.headings { "on" } else { "off" },
+        if render.footer { "on" } else { "off" },
+        match render.format {
+            TextFormat::Markdown => "markdown",
+            TextFormat::Plain => "plain",
+        },
+        render
+            .max_bullets
+            .map(|n| format!(", max {n} bullets"))
+            .unwrap_or_default(),
+        render
+            .max_chars
+            .map(|n| format!(", max {n} chars"))
+            .unwrap_or_default(),
     );
     println!();
 
@@ -820,10 +956,22 @@ async fn debug_prompts(
             &release_kind,
             version_bump,
             version_scheme,
+            &render,
         )
     );
     println!("```");
     println!();
+    // Tier 0 sections only: the real run filters after Tiers 1–3, so
+    // commits they move between sections may land differently.
+    let included = render.filter(&classified);
+    if included.len() < classified.len() {
+        println!(
+            "_{} of {} commit(s) left out by section filters (Tier 0 sections)._",
+            classified.len() - included.len(),
+            classified.len()
+        );
+        println!();
+    }
     println!("### user");
     println!("```");
     let project_context = project::resolve(
@@ -840,7 +988,7 @@ async fn debug_prompts(
     println!(
         "{}",
         prose_prompts::build_user_prompt(
-            &classified,
+            &included,
             resolved.from.as_deref(),
             &resolved.to,
             detected_style,
@@ -849,6 +997,7 @@ async fn debug_prompts(
             version_scheme,
             rich_context_arg || cfg.voice.rich_context,
             &project_context,
+            &render,
         )
     );
     println!("```");

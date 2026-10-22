@@ -18,6 +18,11 @@ without making them read the diff.
 
 # Document shape
 
+When the user message or an "Output format" section below asks for one
+flat list of bullets, write only the bullets (most noticeable first)
+and skip the overview and the section headers described here. The
+coalescing, bullet and reference rules still apply.
+
 1. **Open with a brief overview.** A paragraph or two that captures
    the theme of the release. What's the headline? Is this
    feature-heavy, a stability batch, a foundational refactor? End
@@ -70,7 +75,8 @@ without making them read the diff.
 - **Paraphrase** PR titles and commit subjects rather than quoting
   them verbatim. The voice is yours, the facts are theirs.
 - **No top-level title or `## What's Changed` wrapper.** Start with
-  the overview paragraph, then go straight into `###` sections.
+  the overview paragraph, then go straight into `###` sections (or,
+  for a flat list, straight into the bullets).
 - Skip authors and dates — those belong in metadata, not prose.
 - Output GitHub-flavored Markdown. No code fences around the whole
   document.

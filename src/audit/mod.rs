@@ -21,7 +21,7 @@ use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::models::{Classified, TokenUsage};
+use crate::models::{Classified, RenderSettings, TokenUsage};
 
 /// Schema version of the audit document. Bump when the layout changes
 /// in a way that breaks readers.
@@ -52,6 +52,34 @@ pub struct RunAudit {
     pub final_classification: Classified,
     /// The Markdown produced by the run.
     pub rendered_markdown: String,
+    /// Where the notes text came from: the prose model, the
+    /// deterministic fallback after a failure, or the deterministic
+    /// renderer by request (`--no-llm`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes_source: Option<NotesSource>,
+    /// Resolved render settings (voice frontmatter, config, flags).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub render: Option<RenderSettings>,
+}
+
+/// Origin of the rendered notes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum NotesSource {
+    /// Written by the prose pass.
+    Model,
+    /// The LLM pipeline was wanted but failed or wasn't usable; the
+    /// deterministic renderer wrote the notes instead.
+    Fallback { reason: String },
+    /// The deterministic renderer: by request (`--no-llm`), or because
+    /// there was nothing for the model to do.
+    Deterministic,
+    /// User-facing notes with nothing user-facing in the range (every
+    /// commit filtered out, or the model said so): the fallback line
+    /// for `fallback` was written. Not a failure, even with `--strict`.
+    NothingUserFacing {
+        fallback: crate::models::FallbackKind,
+    },
 }
 
 /// Static configuration snapshot — secrets are explicitly excluded.
@@ -218,6 +246,8 @@ struct AuditState {
     config: Option<ConfigSnapshot>,
     range: Option<RangeSnapshot>,
     llm_calls: Vec<LlmCallAudit>,
+    notes_source: Option<NotesSource>,
+    render: Option<RenderSettings>,
 }
 
 impl AuditSink {
@@ -269,6 +299,16 @@ impl AuditSink {
 
     pub fn set_range(&self, r: RangeSnapshot) {
         self.inner.lock().expect("audit lock poisoned").range = Some(r);
+    }
+
+    /// Record where the notes text came from.
+    pub fn set_notes_source(&self, source: NotesSource) {
+        self.inner.lock().expect("audit lock poisoned").notes_source = Some(source);
+    }
+
+    /// Record the run's resolved render settings.
+    pub fn set_render(&self, render: RenderSettings) {
+        self.inner.lock().expect("audit lock poisoned").render = Some(render);
     }
 
     /// Lightweight totals snapshot for the run summary. Returns
@@ -323,6 +363,8 @@ impl AuditSink {
             tokens: total,
             final_classification,
             rendered_markdown,
+            notes_source: s.notes_source.clone(),
+            render: s.render.clone(),
         }
     }
 }

@@ -13,6 +13,11 @@ day-to-day.
 
 # Document shape
 
+When the user message or an "Output format" section below asks for one
+flat list of bullets, write only the bullets (most noticeable first)
+and skip the overview and the section headers described here. The
+coalescing, bullet and reference rules still apply.
+
 1. **Open with a brief overview.** A paragraph that capture the
    theme of the release. What's the headline? Is this feature-heavy,
    a stability batch, a foundational refactor? If the commits don't
@@ -50,7 +55,8 @@ day-to-day.
   a perf commit shows it; "users will love this" is not.
 - **Don't invent entries** that aren't in the input list.
 - **No top-level title or `## What's Changed` wrapper.** Start with
-  the overview paragraph, then go straight into `###` sections.
+  the overview paragraph, then go straight into `###` sections (or,
+  for a flat list, straight into the bullets).
 - Skip authors and dates — those belong in metadata, not prose.
 - Output GitHub-flavored Markdown. No code fences around the whole
   document.

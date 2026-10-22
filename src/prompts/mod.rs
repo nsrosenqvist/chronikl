@@ -28,6 +28,9 @@ const BUMP_MAJOR_CALVER: &str = include_str!("bump_major_calver.md");
 
 const PRERELEASE_TEMPLATE: &str = include_str!("prerelease_addendum.md");
 
+/// Prose-pass guidance for `user_facing` notes.
+pub const USER_FACING: &str = include_str!("user_facing.md");
+
 /// Pick the bump-addendum for a given (bump, scheme) pair. Returns
 /// `None` for `VersionBump::Unknown` (we have no useful framing).
 ///

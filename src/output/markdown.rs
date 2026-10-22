@@ -16,6 +16,9 @@ pub struct RenderOptions {
     pub header: Option<String>,
     /// Optional trailing line such as `**Full Changelog**: <url>`.
     pub footer: Option<String>,
+    /// `false` writes one flat bullet list (sections in their usual
+    /// order, no `###` headers, no top-level header).
+    pub headings: bool,
 }
 
 impl Default for RenderOptions {
@@ -23,6 +26,7 @@ impl Default for RenderOptions {
         Self {
             header: Some("What's Changed".to_string()),
             footer: None,
+            headings: true,
         }
     }
 }
@@ -34,7 +38,7 @@ impl RenderOptions {
         match release_kind {
             ReleaseKind::Prerelease { label } => Self {
                 header: Some(format!("Prerelease Notes — {label}")),
-                footer: None,
+                ..Self::default()
             },
             _ => Self::default(),
         }
@@ -44,6 +48,10 @@ impl RenderOptions {
 /// Render a [`Classified`] release as GitHub-flavored Markdown.
 pub fn render(classified: &Classified, opts: &RenderOptions) -> String {
     let mut out = String::new();
+
+    if !opts.headings {
+        return render_flat(classified, opts);
+    }
 
     if let Some(header) = &opts.header {
         out.push_str("## ");
@@ -78,6 +86,27 @@ pub fn render(classified: &Classified, opts: &RenderOptions) -> String {
         out.push('\n');
     }
 
+    out
+}
+
+/// One flat list: every bullet, sections in their usual order.
+fn render_flat(classified: &Classified, opts: &RenderOptions) -> String {
+    let mut out = String::new();
+    if classified.is_empty() {
+        out.push_str("_No changes._\n");
+    }
+    for (_, entries) in classified.group_by_section() {
+        for entry in entries {
+            out.push_str("- ");
+            out.push_str(&format_bullet(entry));
+            out.push('\n');
+        }
+    }
+    if let Some(footer) = &opts.footer {
+        out.push('\n');
+        out.push_str(footer);
+        out.push('\n');
+    }
     out
 }
 
@@ -176,6 +205,7 @@ mod tests {
             &RenderOptions {
                 header: None,
                 footer: None,
+                headings: true,
             },
         );
         // No `## ` (level-2) header line. `### Features` is fine.
@@ -195,12 +225,31 @@ mod tests {
             &RenderOptions {
                 header: None,
                 footer: Some("**Full Changelog**: https://example.com/compare".to_string()),
+                headings: true,
             },
         );
         assert!(
             md.trim_end()
                 .ends_with("**Full Changelog**: https://example.com/compare")
         );
+    }
+
+    #[test]
+    fn flat_render_lists_bullets_without_headers() {
+        let commits = vec![
+            enriched("chore: bump", Some("chore"), false, None),
+            enriched("feat: add login", Some("feat"), false, None),
+            enriched("fix: race", Some("fix"), false, None),
+        ];
+        let classified = tier0::classify(&commits);
+        let md = render(
+            &classified,
+            &RenderOptions {
+                headings: false,
+                ..RenderOptions::default()
+            },
+        );
+        assert_eq!(md, "- add login\n- race\n- bump\n");
     }
 
     #[test]

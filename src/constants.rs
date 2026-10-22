@@ -77,6 +77,19 @@ pub const ENV_MODEL: &str = "CHRONIKL_MODEL";
 pub const ENV_API_KEY: &str = "CHRONIKL_API_KEY";
 pub const ENV_BASE_URL: &str = "CHRONIKL_BASE_URL";
 pub const ENV_TEMPERATURE: &str = "CHRONIKL_TEMPERATURE";
+pub const ENV_STRICT: &str = "CHRONIKL_STRICT";
+pub const ENV_USER_FACING: &str = "CHRONIKL_USER_FACING";
+pub const ENV_HEADINGS: &str = "CHRONIKL_HEADINGS";
+pub const ENV_INCLUDE_SECTIONS: &str = "CHRONIKL_INCLUDE_SECTIONS";
+pub const ENV_EXCLUDE_SECTIONS: &str = "CHRONIKL_EXCLUDE_SECTIONS";
+pub const ENV_MAX_BULLETS: &str = "CHRONIKL_MAX_BULLETS";
+pub const ENV_MAX_CHARS: &str = "CHRONIKL_MAX_CHARS";
+pub const ENV_FOOTER: &str = "CHRONIKL_FOOTER";
+pub const ENV_FORMAT: &str = "CHRONIKL_FORMAT";
+pub const ENV_FALLBACK_LINE: &str = "CHRONIKL_FALLBACK_LINE";
+pub const ENV_FALLBACK_FIXES: &str = "CHRONIKL_FALLBACK_FIXES";
+pub const ENV_FALLBACK_PERFORMANCE: &str = "CHRONIKL_FALLBACK_PERFORMANCE";
+pub const ENV_FALLBACK_OTHER: &str = "CHRONIKL_FALLBACK_OTHER";
 
 /// GitHub API token env vars, in lookup order.
 ///
@@ -149,6 +162,23 @@ pub const DEFAULT_CONFIDENCE_THRESHOLD: f32 = 0.6;
 /// model allows. Models that reject the parameter get the call retried
 /// once without it (see `providers::compat`).
 pub const DEFAULT_TEMPERATURE: f64 = 0.0;
+
+// ── "Nothing user-facing" lines ─────────────────────────────────────
+
+/// Line written when nothing in a range is user-facing and the range
+/// holds bug fixes.
+pub const DEFAULT_FALLBACK_FIXES: &str = "Bug fixes and stability improvements.";
+
+/// Line written when nothing in a range is user-facing and the range
+/// holds performance work (and no fixes).
+pub const DEFAULT_FALLBACK_PERFORMANCE: &str = "Faster and smoother in places.";
+
+/// Line written when nothing in a range is user-facing otherwise.
+pub const DEFAULT_FALLBACK_OTHER: &str = "Small improvements behind the scenes.";
+
+/// What the prose model answers when it finds nothing a user would
+/// notice. chronikl replaces it with the matching fallback line.
+pub const NOTHING_USER_FACING_TOKEN: &str = "NO_USER_FACING_CHANGES";
 
 /// Tier 2 maximum diff tokens per commit before truncation.
 pub const DEFAULT_MAX_DIFF_TOKENS: usize = 4000;
