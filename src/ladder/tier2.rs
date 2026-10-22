@@ -108,16 +108,23 @@ pub async fn classify(
 
     let mut updated = 0usize;
     for (global_index, verdict) in results {
-        let section = if verdict.breaking {
+        let mut section = if verdict.breaking {
             Section::Breaking
         } else {
             Section::parse_lenient(&verdict.section).unwrap_or(Section::Other)
         };
+        let mut confidence = verdict.confidence.clamp(0.0, 1.0);
+        if let Some((corrected, cap)) =
+            crate::ladder::files::correct_section(section, &classified.0[global_index].commit.files)
+        {
+            section = corrected;
+            confidence = confidence.min(cap);
+        }
         classified.0[global_index].classification = Classification {
             section,
             summary: verdict.summary.trim().to_string(),
             source: ClassificationSource::PerCommitLlm,
-            confidence: verdict.confidence.clamp(0.0, 1.0),
+            confidence,
         };
         updated += 1;
     }

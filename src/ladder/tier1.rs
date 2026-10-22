@@ -172,12 +172,21 @@ fn apply_verdicts(classified: &mut Classified, results: Vec<BatchResult>) -> Vec
     for (chunk, by_index) in results {
         for (local_index, global_index) in chunk.into_iter().enumerate() {
             if let Some(verdict) = by_index.get(&local_index) {
-                let section = Section::parse_lenient(&verdict.section).unwrap_or(Section::Other);
+                let mut section =
+                    Section::parse_lenient(&verdict.section).unwrap_or(Section::Other);
+                let mut confidence = verdict.confidence.clamp(0.0, 1.0);
+                if let Some((corrected, cap)) = crate::ladder::files::correct_section(
+                    section,
+                    &classified.0[global_index].commit.files,
+                ) {
+                    section = corrected;
+                    confidence = confidence.min(cap);
+                }
                 classified.0[global_index].classification = Classification {
                     section,
                     summary: verdict.summary.trim().to_string(),
                     source: ClassificationSource::BatchedLlm,
-                    confidence: verdict.confidence.clamp(0.0, 1.0),
+                    confidence,
                 };
                 updated.push(global_index);
             }
@@ -231,14 +240,15 @@ fn build_batch_prompt(commits: &[&ClassifiedCommit]) -> String {
             }
         }
         if !c.commit.files.is_empty() {
-            let files: Vec<&str> = c
-                .commit
-                .files
-                .iter()
-                .take(FILES_PREVIEW)
-                .map(String::as_str)
-                .collect();
-            out.push_str(&format!("files: {}\n", files.join(", ")));
+            // Product files first: a feature with many test files
+            // shouldn't read as a tests commit in a truncated list.
+            let ordered = crate::ladder::files::product_first(&c.commit.files);
+            let files: Vec<&str> = ordered.iter().take(FILES_PREVIEW).copied().collect();
+            out.push_str(&format!(
+                "files ({}): {}\n",
+                crate::ladder::files::summary(&c.commit.files),
+                files.join(", ")
+            ));
             if c.commit.files.len() > FILES_PREVIEW {
                 out.push_str(&format!(
                     "  (+{} more files)\n",
@@ -396,7 +406,7 @@ mod tests {
     #[tokio::test]
     async fn asks_again_for_commits_the_model_skipped() {
         let commits: Vec<ClassifiedCommit> = (0..4)
-            .map(|i| commit(&format!("sha{i}"), &format!("subject {i}"), "", &["x"]))
+            .map(|i| commit(&format!("sha{i}"), &format!("subject {i}"), "", &[]))
             .collect();
         let mut classified = Classified(commits);
         // First answer covers only commit 0; the retry batch holds the
@@ -548,5 +558,69 @@ mod tests {
         let out = truncate("a".repeat(20).as_str(), 5);
         assert!(out.starts_with("aaaaa"));
         assert!(out.ends_with('…'));
+    }
+
+    #[tokio::test]
+    async fn tests_verdict_on_a_product_change_is_corrected() {
+        // Montiva 672cffa2 "Landing FAQ: an iPhone app is planned": the
+        // landing page's FAQ text in five locales plus the roadmap. Five
+        // of six models filed it under documentation.
+        let mut classified = Classified(vec![commit(
+            "672cffa2",
+            "Landing FAQ: an iPhone app is planned; until then the browser",
+            "",
+            &[
+                "apps/web/src/presentation/i18n/locales/en-US/landing.json",
+                "apps/web/src/presentation/i18n/locales/sv/landing.json",
+                "docs/roadmap.md",
+            ],
+        )]);
+        let provider = MockProvider::returning(
+            serde_json::json!({"verdicts": [
+                {"index": 0, "section": "documentation", "summary": "Update the FAQ", "confidence": 0.9}
+            ]})
+            .to_string(),
+        );
+        classify(
+            &mut classified,
+            &provider,
+            &AuditSink::new(),
+            50,
+            1.0,
+            default_system_prompt(),
+        )
+        .await
+        .unwrap();
+        let c = &classified.0[0].classification;
+        assert_eq!(c.section, Section::Other);
+        assert!(c.confidence <= 0.5);
+    }
+
+    #[test]
+    fn batch_prompt_lists_product_files_first_with_a_summary() {
+        // Montiva 8bf4ff12 "Map: Tools with Record a ride": the e2e specs
+        // sort first alphabetically and used to fill the preview.
+        let mut files: Vec<String> = (0..12)
+            .map(|i| format!("apps/web/e2e/spec{i:02}.spec.ts"))
+            .collect();
+        files.push("apps/web/src/main.ts".into());
+        files.push("apps/web/src/presentation/components/map/ToolsMenu.vue".into());
+        let refs: Vec<&str> = files.iter().map(String::as_str).collect();
+        let c = commit(
+            "8bf4ff12",
+            "Map: Tools with Record a ride, and the sharing pill in the top row",
+            "",
+            &refs,
+        );
+        let prompt = build_batch_prompt(&[&c]);
+        assert!(prompt.contains("files (2 product, 12 test, 0 doc): apps/web/src/main.ts, "));
+        assert!(prompt.contains("ToolsMenu.vue"));
+    }
+
+    #[test]
+    fn system_prompt_carries_the_section_rules() {
+        let p = default_system_prompt();
+        assert!(p.contains("A\n  feature or fix that also adds tests is a feature or fix."));
+        assert!(p.contains("Copy the product shows its users"));
     }
 }

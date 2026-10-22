@@ -65,38 +65,52 @@ fn classify_one(entry: &EnrichedCommit) -> ClassifiedCommit {
 }
 
 /// Classify via Conventional Commits parse (if any).
+///
+/// Only a known type (`feat`, `fix`, `docs`, …) or a breaking marker is a
+/// deterministic placement. Many repos write `Area: subject` (`Map: …`,
+/// `Assistant: …`), which parses as a Conventional header with an
+/// unknown type; that says nothing about the section, so those commits
+/// get a low-confidence placement and go to Tier 1 like any other
+/// free-form subject.
 fn classify_conventional(commit: &Commit) -> Option<Classification> {
     let conv = commit.conventional.as_ref()?;
-    let section = if commit.breaking || conv.breaking {
-        Section::Breaking
-    } else {
-        section_from_kind(&conv.kind)
-    };
-    Some(Classification {
+    if commit.breaking || conv.breaking {
+        return Some(Classification {
+            section: Section::Breaking,
+            summary: conv.description.clone(),
+            source: ClassificationSource::Conventional,
+            confidence: 1.0,
+        });
+    }
+    // An unknown type yields `None`: the files heuristics and then the
+    // low-confidence default take over, keeping the full subject.
+    section_from_kind(&conv.kind).map(|section| Classification {
         section,
         // Drop the redundant `feat:`/`fix:` prefix — the section header
-        // already conveys the kind. Keep the description as-is.
+        // already conveys the kind. Keep the description.
         summary: conv.description.clone(),
         source: ClassificationSource::Conventional,
         confidence: 1.0,
     })
 }
 
-fn section_from_kind(kind: &str) -> Section {
-    match kind {
-        "feat" => Section::Features,
-        "fix" => Section::BugFixes,
+/// Section for a Conventional Commits type, or `None` for a type
+/// chronikl doesn't know.
+fn section_from_kind(kind: &str) -> Option<Section> {
+    Some(match kind {
+        "feat" | "feature" => Section::Features,
+        "fix" | "bugfix" | "hotfix" => Section::BugFixes,
         "perf" => Section::Performance,
         "refactor" => Section::Refactor,
-        "docs" => Section::Documentation,
+        "docs" | "doc" => Section::Documentation,
         "test" | "tests" => Section::Tests,
-        "build" => Section::Build,
+        "build" | "deps" => Section::Build,
         "ci" => Section::Ci,
         "chore" | "style" => Section::Chore,
         // Conventional doesn't define `revert` formally, but it's common.
         "revert" => Section::Other,
-        _ => Section::Other,
-    }
+        _ => return None,
+    })
 }
 
 /// Classify based on which files the commit touched, when no Conventional
@@ -333,6 +347,77 @@ mod tests {
         assert_eq!(
             sections,
             vec![Section::Breaking, Section::Features, Section::Chore]
+        );
+    }
+
+    #[test]
+    fn area_prefixed_subjects_go_to_tier_1() {
+        // Montiva writes `Area: subject`. `Map:` and `Assistant:` parse as
+        // Conventional types chronikl doesn't know; they used to land in
+        // `other` at confidence 1.0 and skip Tier 1, so the release's
+        // two headline features were never classified.
+        for (subject, kind) in [
+            (
+                "Map: Tools with Record a ride, and the sharing pill in the top row",
+                "map",
+            ),
+            (
+                "Assistant: report an answer from the chat, review reports in the admin panel",
+                "assistant",
+            ),
+            ("Web: vue-tsc gets a 6 GB heap", "web"),
+        ] {
+            let c = commit(subject, Some(kind), false, &["apps/web/src/main.ts"]);
+            let out = classify_one(&EnrichedCommit::from_commit(c));
+            assert_eq!(out.classification.section, Section::Other, "{subject}");
+            assert!(out.classification.confidence < 1.0, "{subject}");
+            assert_eq!(out.classification.summary, subject, "keeps the area");
+        }
+    }
+
+    #[test]
+    fn known_types_stay_deterministic_in_any_case() {
+        // Montiva's `Docs:` and `Test:` are real types.
+        let c = commit(
+            "Docs: reporting the assistant's answers (ADR 0127)",
+            Some("docs"),
+            false,
+            &["docs/adr/0127.md"],
+        );
+        let out = classify_one(&EnrichedCommit::from_commit(c));
+        assert_eq!(out.classification.section, Section::Documentation);
+        assert!((out.classification.confidence - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn unknown_type_with_breaking_marker_is_breaking() {
+        let c = commit("api!: drop v1", Some("api"), true, &["src/api.rs"]);
+        let out = classify_one(&EnrichedCommit::from_commit(c));
+        assert_eq!(out.classification.section, Section::Breaking);
+    }
+
+    #[test]
+    fn docs_dir_heuristic_needs_every_file_in_docs() {
+        // Montiva 048a2bef touched docs/ and the sign-in page.
+        let c = commit(
+            "Sign-in page: the form in the middle on a phone",
+            None,
+            false,
+            &[
+                "apps/web/src/presentation/components/account/SignInPage.vue",
+                "docs/features/accounts-billing-and-admin.md",
+            ],
+        );
+        assert!(classify_files_only(&c).is_none());
+        let docs_only = commit(
+            "Privacy policy: no bracket",
+            None,
+            false,
+            &["docs/legal/privacy.md"],
+        );
+        assert_eq!(
+            classify_files_only(&docs_only).unwrap().section,
+            Section::Documentation
         );
     }
 }

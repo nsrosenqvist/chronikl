@@ -5,6 +5,7 @@
 //! Tier 2: per-commit LLM classification with diff context.
 //! Tier 3: agentic LLM classification with read tools (opt-in).
 
+pub mod files;
 pub mod tier0;
 pub mod tier1;
 pub mod tier2;

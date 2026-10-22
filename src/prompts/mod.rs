@@ -12,9 +12,20 @@
 
 use crate::models::{ClassifiedCommit, VersionBump, VersionScheme};
 
-pub const TIER1_SYSTEM: &str = include_str!("tier1_system.md");
-pub const TIER2_SYSTEM: &str = include_str!("tier2_system.md");
-pub const TIER3_SYSTEM: &str = include_str!("tier3_system.md");
+// Every classifying tier shares the same section rules, so Tier 1, 2
+// and 3 agree on what makes a commit a feature rather than "tests".
+pub const TIER1_SYSTEM: &str = concat!(
+    include_str!("tier1_system.md"),
+    include_str!("section_rules.md")
+);
+pub const TIER2_SYSTEM: &str = concat!(
+    include_str!("tier2_system.md"),
+    include_str!("section_rules.md")
+);
+pub const TIER3_SYSTEM: &str = concat!(
+    include_str!("tier3_system.md"),
+    include_str!("section_rules.md")
+);
 pub const TIER3_SELF_REPAIR: &str = include_str!("tier3_self_repair.md");
 
 const BUMP_INITIAL_SEMVER: &str = include_str!("bump_initial_semver.md");
@@ -116,8 +127,11 @@ pub fn commit_context_prompt(entry: &ClassifiedCommit, diff: &str) -> String {
         }
     }
     if !entry.commit.files.is_empty() {
-        out.push_str("\nFiles changed:\n");
-        for f in &entry.commit.files {
+        out.push_str(&format!(
+            "\nFiles changed ({}):\n",
+            crate::ladder::files::summary(&entry.commit.files)
+        ));
+        for f in crate::ladder::files::product_first(&entry.commit.files) {
             out.push_str(&format!("  - {f}\n"));
         }
     }

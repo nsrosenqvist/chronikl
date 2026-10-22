@@ -28,7 +28,9 @@ Output a JSON object with:
 
 Rules:
 - Read the diff, not just the message.
-- If the diff is mostly test files, section=tests.
+- If the diff changes only test files, section=tests. A diff that
+  changes product code and adds tests for it is classified by what the
+  product change does.
 - Lockfile-only commits go in chore.
 - Be factual; don't speculate about user impact.
 
