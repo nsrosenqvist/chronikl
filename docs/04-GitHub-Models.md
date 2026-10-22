@@ -1,5 +1,7 @@
 # GitHub Models
 
+> **Retired.** GitHub retired GitHub Models on 2026-07-30: its playground, model catalog and inference API are no longer available ([GitHub's docs](https://docs.github.com/en/github-models)). chronikl's `github-models` provider stays for now but every call to it fails. Use another provider instead, for example `openai`, `anthropic`, `gemini`, or any OpenAI-compatible endpoint through `openai-compatible` with `CHRONIKL_BASE_URL` (see [LLM Providers](03-Providers)). The rest of this page describes the service as it was.
+
 [GitHub Models](https://docs.github.com/en/github-models) is GitHub's hosted, OpenAI-compatible inference gateway. It exposes OpenAI, Meta Llama, DeepSeek, xAI, Microsoft Phi, and other publishers behind a single endpoint, authenticates with a GitHub token (PAT or the auto-injected `GITHUB_TOKEN`), and is included with paid Copilot tiers (a small free tier is available without Copilot).
 
 For chronikl this is the lowest-friction provider in CI: the `GITHUB_TOKEN` your release workflow already has is also the API key. No extra secret to manage.

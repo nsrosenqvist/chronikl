@@ -28,7 +28,7 @@ inputs:
     required: false
     default: "false"
   voice:
-    description: "Bundled profile name (terse, prose, default) or path to a voice markdown file"
+    description: "Bundled profile name (terse, prose, simple, default) or path to a voice markdown file"
     required: false
     default: ""
   rich_context:

@@ -15,7 +15,7 @@ chronikl uses [rig-core](https://crates.io/crates/rig-core) to talk to LLMs. Bri
 | DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` |
 | Galadriel | `galadriel` | `CHRONIKL_API_KEY` |
 | Gemini (Google) | `gemini` | `GEMINI_API_KEY` |
-| GitHub Models | `github-models` | `GITHUB_MODELS_TOKEN` or `GITHUB_TOKEN` — needs `models:read` scope |
+| GitHub Models (retired 2026-07-30) | `github-models` | `GITHUB_MODELS_TOKEN` or `GITHUB_TOKEN`. GitHub retired the service; calls fail |
 | Groq | `groq` | `GROQ_API_KEY` |
 | HuggingFace | `huggingface` | `HF_API_KEY` |
 | Hyperbolic | `hyperbolic` | `CHRONIKL_API_KEY` |
@@ -41,11 +41,11 @@ export CHRONIKL_API_KEY=sk-ant-...
 
 There's no default model — you must set `CHRONIKL_MODEL` (or `[provider] model = "..."` in `.chronikl.toml`). Recommended starting points:
 
-- **Anthropic**: `claude-haiku-4-5` (cheap classification), `claude-sonnet-4-6` (prose pass), `claude-opus-4-7` (long releases or polished prose)
-- **OpenAI**: `gpt-5-mini` (cheap), `gpt-5` (prose)
-- **Gemini**: `gemini-2.5-flash` (cheap), `gemini-2.5-pro` (prose)
+- **Anthropic**: `claude-haiku-5-5` (cheap), `claude-sonnet-5-5` (polished prose)
+- **OpenAI**: `gpt-4.1-mini` (cheap, fast), `gpt-5.4-mini` or `gpt-5-mini` (reasoning)
+- **Gemini**: `gemini-flash-latest` (cheap), `gemini-3-flash-preview`
 
-The same model is used for all tiers. For most release ranges (under ~50 commits) a mid-tier model gives good results.
+The same model is used for all tiers. Models that reject a fixed `temperature` (Claude 5.5, OpenAI's reasoning models) or want `max_completion_tokens` instead of `max_tokens` (OpenAI's GPT-5 family) work as they are: chronikl retries the first rejected call without the parameter and keeps it that way for the run (see [Configuration](05-Configuration#temperature)). For most release ranges (under ~50 commits) a mid-tier model gives good results.
 
 ## Custom OpenAI-compatible endpoints
 
@@ -96,6 +96,6 @@ A 50-commit release on `claude-sonnet-4-6` typically uses 5,000–15,000 input t
 
 ## Related Pages
 
-- [GitHub Models](04-GitHub-Models) — hosted OpenAI-compatible gateway, zero-secret setup in GitHub Actions
+- [GitHub Models](04-GitHub-Models) — retired by GitHub on 2026-07-30
 - [Configuration](05-Configuration) — TOML alternatives to env vars
 - [CLI Reference](08-CLI-Reference) — `--provider`, `--model`, `--api-key`, `--base-url`

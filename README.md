@@ -24,10 +24,11 @@ $ chronikl --from v0.1.0 --to v0.2.0
 
 - **Cost-aware classification ladder.** Tier 0 (deterministic, no LLM) → Tier 1 (batched LLM) → Tier 2 (per-commit + diff) → Tier 3 (optional agentic). Most commits never reach an LLM. A 50-commit release typically uses a few thousand tokens.
 - **PR enrichment.** When run on a GitHub repo with a token, chronikl fetches PR titles, bodies, and labels and feeds them to the LLM — much better signal than raw commit messages.
-- **Voice control.** Pick a bundled profile (`--voice terse` for one-line bullets, `--voice prose` for richer multi-sentence entries) or point at your own plain-Markdown voice file. Add `--rich-context` to feed commit + PR bodies to the prose pass; `--prompt "..."` for one-off tweaks.
+- **Voice control.** Pick a bundled profile (`--voice terse` for one-line bullets, `--voice prose` for richer multi-sentence entries, `--voice simple` for the product's users) or point at your own plain-Markdown voice file. Add `--rich-context` to feed commit + PR bodies to the prose pass; `--prompt "..."` for one-off tweaks.
+- **Notes for users too.** `--voice simple` writes a short plain-text "What's new" for app stores: only what users can see or do, flat, capped to fit, and a friendly fallback line when a release holds nothing user-facing. A voice file's frontmatter can carry the same rendering settings (`headings`, `exclude_sections`, `max_chars`, `format`, …), and flags or `[render]` override them. `--strict` fails the run instead of falling back to deterministic notes when the model can't be reached.
 - **Release-context aware.** Detects prerelease vs. stable, semver vs. CalVer, and the bump kind (major/minor/patch). Prose adjusts tone — major releases lead with breaking changes, patches lead with fixes, etc.
 - **Veritrail-style audit log.** Optional `--audit-log` writes a full JSON record of every LLM call (model, tokens, prompt + response hashes, tool calls). Lets you answer "why did chronikl say that?" months later.
-- **20 LLM providers.** Anthropic, OpenAI, Gemini, GitHub Models, Cohere, DeepSeek, xAI, Groq, Perplexity, HuggingFace, Mistral, Moonshot, Ollama, Azure, OpenRouter, Together, and any OpenAI-compatible endpoint.
+- **20 LLM providers.** Anthropic, OpenAI, Gemini, Cohere, DeepSeek, xAI, Groq, Perplexity, HuggingFace, Mistral, Moonshot, Ollama, Azure, OpenRouter, Together, and any OpenAI-compatible endpoint.
 - **CI-first.** Ships as a GitHub Action, install.sh, Dockerfile, and self-update binary. Designed to drop into a release workflow.
 
 ## Quick install
@@ -89,7 +90,7 @@ Full docs live at [chronikl.dev/docs](https://chronikl.dev/docs):
 - [Installation](https://chronikl.dev/docs/installation/)
 - [Quick Start](https://chronikl.dev/docs/quick-start/)
 - [LLM Providers](https://chronikl.dev/docs/providers/)
-- [GitHub Models](https://chronikl.dev/docs/github-models/)
+- [GitHub Models](https://chronikl.dev/docs/github-models/) (retired by GitHub on 2026-07-30)
 - [Configuration](https://chronikl.dev/docs/configuration/)
 - [Voice](https://chronikl.dev/docs/voice/)
 - [CI/CD Integration](https://chronikl.dev/docs/ci-integration/)

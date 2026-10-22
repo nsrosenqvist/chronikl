@@ -73,7 +73,7 @@ chronikl --no-llm
 
 - **Set a voice** — give chronikl your own Markdown file with prose style. See [Voice](06-Voice).
 - **Drop a config** — write a `.chronikl.toml` so the team doesn't need to set env vars each run. See [Configuration](05-Configuration).
-- **Run in CI** — fire chronikl from your release workflow and feed the output to `softprops/action-gh-release`. See [CI Integration](07-CI-Integration). For zero-secret CI with `GITHUB_TOKEN`, see [GitHub Models](04-GitHub-Models).
+- **Run in CI** — fire chronikl from your release workflow and feed the output to `softprops/action-gh-release`. See [CI Integration](07-CI-Integration).
 - **Enable agentic mode** — `--agent` lets the LLM read files and search the repo to figure out cryptic commits. See [CLI Reference](08-CLI-Reference).
 
 ## Related Pages
