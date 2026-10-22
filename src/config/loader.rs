@@ -159,8 +159,25 @@ impl Config {
             config = merge(config, next);
         }
 
+        config.anchor_paths(repo_root);
         config.apply_env(env)?;
         Ok(config)
+    }
+
+    /// Resolve relative file paths from TOML (`voice.path`,
+    /// `project.readme`) against the repo root, so a repo's
+    /// `.chronikl.toml` works whatever directory chronikl runs from
+    /// (e.g. with `--repo`). Paths from CLI flags stay relative to the
+    /// working directory.
+    fn anchor_paths(&mut self, repo_root: &Path) {
+        for path in [&mut self.voice.path, &mut self.project.readme]
+            .into_iter()
+            .flatten()
+        {
+            if path.is_relative() {
+                *path = repo_root.join(&*path);
+            }
+        }
     }
 
     fn apply_env(&mut self, env: &Env) -> Result<(), ConfigError> {
@@ -472,5 +489,19 @@ model = "claude-sonnet-4-6"
             Config::load(&env, dir.path(), None),
             Err(ConfigError::InvalidValue { .. })
         ));
+    }
+
+    #[test]
+    fn relative_toml_paths_resolve_against_the_repo_root() {
+        let dir = tempfile::tempdir().unwrap();
+        write_toml(
+            dir.path(),
+            CONFIG_FILENAME,
+            "[voice]\npath = \"tools/voice.md\"\n[project]\nreadme = \"/abs/README.md\"\n",
+        );
+        let env = Env::mock(Vec::<(&str, &str)>::new());
+        let cfg = Config::load(&env, dir.path(), None).unwrap();
+        assert_eq!(cfg.voice.path, Some(dir.path().join("tools/voice.md")));
+        assert_eq!(cfg.project.readme, Some(PathBuf::from("/abs/README.md")));
     }
 }
