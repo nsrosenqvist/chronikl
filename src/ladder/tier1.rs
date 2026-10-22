@@ -78,20 +78,59 @@ pub async fn classify(
         return Ok(0);
     }
 
-    // Hoist schema construction outside the loop — it's identical
-    // across batches.
+    let mut updated = apply_verdicts(
+        classified,
+        run_round(classified, &pending, provider, batch_size, system_prompt).await?,
+    );
+    let first_round: std::collections::HashSet<usize> = updated.iter().copied().collect();
+
+    // Models occasionally return verdicts for only part of a batch (seen
+    // with Claude 5.5 at its default temperature). Ask once more for the
+    // commits that got none, in their own smaller batch.
+    let missing: Vec<usize> = pending
+        .iter()
+        .copied()
+        .filter(|i| !first_round.contains(i))
+        .collect();
+    if !missing.is_empty() {
+        eprintln!(
+            "warn: Tier 1 returned no verdict for {} of {} commit(s); asking again for those",
+            missing.len(),
+            pending.len()
+        );
+        updated.extend(apply_verdicts(
+            classified,
+            run_round(classified, &missing, provider, batch_size, system_prompt).await?,
+        ));
+    }
+    Ok(updated.len())
+}
+
+/// Verdicts for one batch: the batch's global commit indices and the
+/// model's verdicts keyed by local index.
+type BatchResult = (Vec<usize>, HashMap<usize, BatchVerdict>);
+
+/// Send `indices` to the model in batches of `batch_size`, concurrently
+/// (bounded by [`LLM_CONCURRENCY`]). Short-circuits on the first error.
+async fn run_round(
+    classified: &Classified,
+    indices: &[usize],
+    provider: &dyn NotesProvider,
+    batch_size: usize,
+    system_prompt: &str,
+) -> Result<Vec<BatchResult>, ProviderError> {
     let schema =
         serde_json::to_value(schema_for!(BatchResponse)).unwrap_or(serde_json::Value::Null);
 
     // Build per-batch jobs. Each job owns the data it needs (prompt,
-    // label, shas) so the futures don't borrow `classified` mutably.
+    // label, shas) so the futures don't borrow `classified`.
     struct BatchJob {
         chunk: Vec<usize>,
         user_prompt: String,
         label: String,
         shas: Vec<String>,
     }
-    let jobs: Vec<BatchJob> = pending
+    let jobs: Vec<BatchJob> = indices
         .chunks(batch_size.max(1))
         .map(|chunk| {
             let entries: Vec<&ClassifiedCommit> = chunk.iter().map(|&i| &classified.0[i]).collect();
@@ -104,33 +143,32 @@ pub async fn classify(
         })
         .collect();
 
-    // Run batches concurrently (bounded by LLM_CONCURRENCY) and
-    // collect parsed verdicts per chunk. `try_buffer_unordered` short-
-    // circuits on the first error.
-    let results: Vec<(Vec<usize>, HashMap<usize, BatchVerdict>)> =
-        futures::stream::iter(jobs.iter().map(|job| {
-            let schema = schema.clone();
-            async move {
-                let request = CompletionRequest {
-                    system_prompt,
-                    user_prompt: &job.user_prompt,
-                    schema,
-                    max_tokens: TIER1_MAX_OUTPUT_TOKENS,
-                    label: &job.label,
-                    commit_shas: &job.shas,
-                };
-                let response = provider.complete(request).await?;
-                let verdicts = parse_batch_response(&response.text)?;
-                let by_index: HashMap<usize, BatchVerdict> =
-                    verdicts.into_iter().map(|v| (v.index, v)).collect();
-                Ok::<_, ProviderError>((job.chunk.clone(), by_index))
-            }
-        }))
-        .buffer_unordered(LLM_CONCURRENCY)
-        .try_collect()
-        .await?;
+    futures::stream::iter(jobs.iter().map(|job| {
+        let schema = schema.clone();
+        async move {
+            let request = CompletionRequest {
+                system_prompt,
+                user_prompt: &job.user_prompt,
+                schema,
+                max_tokens: TIER1_MAX_OUTPUT_TOKENS,
+                label: &job.label,
+                commit_shas: &job.shas,
+            };
+            let response = provider.complete(request).await?;
+            let verdicts = parse_batch_response(&response.text)?;
+            let by_index: HashMap<usize, BatchVerdict> =
+                verdicts.into_iter().map(|v| (v.index, v)).collect();
+            Ok::<_, ProviderError>((job.chunk.clone(), by_index))
+        }
+    }))
+    .buffer_unordered(LLM_CONCURRENCY)
+    .try_collect()
+    .await
+}
 
-    let mut updated = 0usize;
+/// Write verdicts into `classified`; returns the indices that got one.
+fn apply_verdicts(classified: &mut Classified, results: Vec<BatchResult>) -> Vec<usize> {
+    let mut updated = Vec::new();
     for (chunk, by_index) in results {
         for (local_index, global_index) in chunk.into_iter().enumerate() {
             if let Some(verdict) = by_index.get(&local_index) {
@@ -141,11 +179,11 @@ pub async fn classify(
                     source: ClassificationSource::BatchedLlm,
                     confidence: verdict.confidence.clamp(0.0, 1.0),
                 };
-                updated += 1;
+                updated.push(global_index);
             }
         }
     }
-    Ok(updated)
+    updated
 }
 
 /// Default Tier 1 system prompt. Loaded from `src/prompts/tier1_system.md`.
@@ -353,6 +391,57 @@ mod tests {
         .unwrap();
         assert_eq!(updated, 7);
         assert_eq!(provider.call_count(), 3);
+    }
+
+    #[tokio::test]
+    async fn asks_again_for_commits_the_model_skipped() {
+        let commits: Vec<ClassifiedCommit> = (0..4)
+            .map(|i| commit(&format!("sha{i}"), &format!("subject {i}"), "", &["x"]))
+            .collect();
+        let mut classified = Classified(commits);
+        // First answer covers only commit 0; the retry batch holds the
+        // other three, re-indexed from 0.
+        let first = serde_json::json!({"verdicts": [
+            {"index": 0, "section": "features", "summary": "s0", "confidence": 0.9}
+        ]})
+        .to_string();
+        let retry = serde_json::json!({"verdicts": [
+            {"index": 0, "section": "bug-fixes", "summary": "s1", "confidence": 0.9},
+            {"index": 1, "section": "tests", "summary": "s2", "confidence": 0.9},
+            {"index": 2, "section": "docs", "summary": "s3", "confidence": 0.9}
+        ]})
+        .to_string();
+        let provider = MockProvider::returning_sequence(vec![first, retry]);
+        let audit = AuditSink::new();
+
+        let updated = classify(
+            &mut classified,
+            &provider,
+            &audit,
+            50,
+            1.0,
+            default_system_prompt(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated, 4);
+        assert_eq!(provider.call_count(), 2);
+        let retry_prompt = &provider.captured_calls()[1].user_prompt;
+        assert!(!retry_prompt.contains("subject 0"));
+        assert!(retry_prompt.contains("subject 3"));
+        let sections: Vec<Section> = classified
+            .iter()
+            .map(|c| c.classification.section)
+            .collect();
+        assert_eq!(
+            sections,
+            vec![
+                Section::Features,
+                Section::BugFixes,
+                Section::Tests,
+                Section::Documentation
+            ]
+        );
     }
 
     #[tokio::test]
