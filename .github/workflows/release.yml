@@ -6,9 +6,6 @@ on:
 
 permissions:
   contents: write
-  # `models: read` is required for the dogfooded release-notes step,
-  # which calls the just-built chronikl binary against GitHub Models.
-  models: read
 
 jobs:
   build:
@@ -117,16 +114,19 @@ jobs:
           tar xzf artifacts/chronikl-x86_64-unknown-linux-gnu.tar.gz
           chmod +x chronikl
 
-      # Dogfood: the just-built chronikl writes its own release notes,
-      # talking to GitHub Models via the workflow's GITHUB_TOKEN (no
-      # extra secret required — `permissions: models: read` is enough).
+      # Dogfood: the just-built chronikl writes its own release notes.
+      # GitHub Models, which this used to call, was retired on 2026-07-30.
+      # With the repository variables CHRONIKL_PROVIDER and CHRONIKL_MODEL
+      # and the secret CHRONIKL_API_KEY set, the model writes them;
+      # without them chronikl's deterministic tier does (--no-llm).
       # Falls back to raw git log if chronikl fails for any reason.
       - name: Build changelog with chronikl
         id: changelog
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CHRONIKL_PROVIDER: github-models
-          CHRONIKL_MODEL: openai/gpt-4o-mini
+          CHRONIKL_PROVIDER: ${{ vars.CHRONIKL_PROVIDER }}
+          CHRONIKL_MODEL: ${{ vars.CHRONIKL_MODEL }}
+          CHRONIKL_API_KEY: ${{ secrets.CHRONIKL_API_KEY }}
         run: |
           # Find the previous tag (excluding floating major/minor tags like v0, v0.2)
           PREV_TAG=$(git tag --list 'v*.*.*' --sort=-v:refname \
@@ -141,8 +141,13 @@ jobs:
             DIFF_URL=""
           fi
 
+          LLM=(--voice prose --rich-context)
+          if [ -z "$CHRONIKL_PROVIDER" ] || [ -z "$CHRONIKL_MODEL" ] || [ -z "$CHRONIKL_API_KEY" ]; then
+            echo "No provider configured: writing deterministic notes (--no-llm)"
+            LLM=(--no-llm)
+          fi
           if ./chronikl --from "$FROM" --to "$GITHUB_REF_NAME" \
-               --voice prose --rich-context \
+               "${LLM[@]}" \
                --output release_notes.md; then
             echo "chronikl: generated release notes ($(wc -c < release_notes.md) bytes)"
           else
