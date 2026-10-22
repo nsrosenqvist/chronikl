@@ -89,6 +89,8 @@ struct LabelShape {
     name: String,
 }
 
+// async_trait marks the boxed future #[must_use]; newer clippy flags that as double_must_use.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 impl PrEnricher for GitHubEnricher {
     async fn enrich(&self, commits: &mut [EnrichedCommit]) -> Result<EnrichOutcome, EnrichError> {

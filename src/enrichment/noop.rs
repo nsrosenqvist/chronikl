@@ -9,6 +9,8 @@ use crate::models::EnrichedCommit;
 #[derive(Debug, Default)]
 pub struct NoOpEnricher;
 
+// async_trait marks the boxed future #[must_use]; newer clippy flags that as double_must_use.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 impl PrEnricher for NoOpEnricher {
     async fn enrich(&self, _commits: &mut [EnrichedCommit]) -> Result<EnrichOutcome, EnrichError> {
