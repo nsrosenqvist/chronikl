@@ -16,13 +16,13 @@ Options:
 
 ```bash
 # Specific version:
-curl -sSfL .../install.sh | sh -s -- --version v0.1.0
+curl -sSfL .../install.sh | sh -s -- --version v1.3.0
 
 # Custom install dir:
 curl -sSfL .../install.sh | sh -s -- --dir ~/.local/bin
 
 # Or via env vars:
-CHRONIKL_VERSION=v0.1.0 CHRONIKL_INSTALL_DIR=~/.local/bin .../install.sh
+CHRONIKL_VERSION=v1.3.0 CHRONIKL_INSTALL_DIR=~/.local/bin .../install.sh
 ```
 
 ## Manual download

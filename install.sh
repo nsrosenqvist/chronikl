@@ -4,7 +4,7 @@
 # Usage:
 #   curl -sSfL https://raw.githubusercontent.com/nsrosenqvist/chronikl/main/install.sh | sh
 #   curl -sSfL https://raw.githubusercontent.com/nsrosenqvist/chronikl/main/install.sh | sh -s -- --dir ~/.local/bin
-#   curl -sSfL https://raw.githubusercontent.com/nsrosenqvist/chronikl/main/install.sh | sh -s -- --version v0.1.0
+#   curl -sSfL https://raw.githubusercontent.com/nsrosenqvist/chronikl/main/install.sh | sh -s -- --version v1.3.0
 #
 # Environment variables:
 #   CHRONIKL_INSTALL_DIR  — Override the default install directory (default: /usr/local/bin)
@@ -53,7 +53,7 @@ while [ $# -gt 0 ]; do
             say ""
             say "Options:"
             say "  --dir DIR        Install directory (default: $DEFAULT_INSTALL_DIR)"
-            say "  --version TAG    Version tag to install, e.g. v0.1.0 (default: latest)"
+            say "  --version TAG    Version tag to install, e.g. v1.3.0 (default: latest)"
             say ""
             say "Environment variables:"
             say "  CHRONIKL_INSTALL_DIR   Override install directory"
