@@ -487,6 +487,8 @@ impl RigProvider {
     }
 }
 
+// async_trait marks the boxed future #[must_use]; newer clippy flags that as double_must_use.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 impl NotesProvider for RigProvider {
     async fn complete(

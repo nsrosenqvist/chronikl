@@ -58,6 +58,8 @@ pub struct CompletionResponse {
 }
 
 /// LLM provider abstraction.
+// async_trait marks the boxed future #[must_use]; newer clippy flags that as double_must_use.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait NotesProvider: Send + Sync {
     /// Make a single completion call, returning the assistant text plus
