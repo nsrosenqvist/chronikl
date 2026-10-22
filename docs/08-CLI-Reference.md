@@ -4,6 +4,8 @@
 chronikl [OPTIONS] [COMMAND]
 ```
 
+`chronikl --help` lists every flag; `chronikl --version` prints the version.
+
 With no subcommand, `chronikl` runs the default *generate notes* flow.
 
 ---
@@ -60,6 +62,14 @@ Section ids: `breaking`, `features`, `fixes` (or `bug-fixes`), `performance` (`p
 | `--rich-context` | Embed truncated commit bodies (≤600 chars) and PR bodies (≤1000 chars) in the prose-pass user prompt. Off by default; pairs well with `--voice prose`. Also `[voice].rich_context = true` in TOML. |
 | `--prompt <TEXT>` | One-shot system-prompt addendum. Applied last; always wins. |
 
+### Project context flags
+
+| Flag | Effect |
+|---|---|
+| `--project-description <TEXT>` | One-line project description for the prose prompt. Overrides `[project].description` and auto-detection from `Cargo.toml` / `package.json` / `pyproject.toml`. |
+| `--readme <PATH>` | README whose intro goes into the prose prompt. Defaults to `README.md` / `.rst` / `.txt` in the repo root. |
+| `--no-readme` | Send no README intro to the model. |
+
 ### LLM behaviour flags
 
 | Flag | Effect |
@@ -115,15 +125,16 @@ Diagnostic helpers. Output shapes are subject to change.
 | `chronikl debug classify [range...]` | Run Tier 0 deterministic classification, print JSON. |
 | `chronikl debug prompts [range...] [--voice NAME_OR_FILE] [--prompt TEXT] [--rich-context] [rendering flags]` | Dump every LLM prompt that *would* be sent (Tier 1, Tier 2, Tier 3, prose pass) without calling the LLM. Honors the configured voice + addenda and the rendering flags, so the dumped prose prompt matches what `generate` would actually send. |
 
-## Provider / model overrides
+## Provider and model
 
-These are typically set via env or `.chronikl.toml`, but can be overridden inline:
+There are no flags for the provider, model, API key or base URL. Set them in the environment or in `.chronikl.toml` (see [Configuration](05-Configuration) and [LLM Providers](03-Providers)):
 
 ```bash
-chronikl --provider anthropic \
-         --model claude-haiku-4-5 \
-         --api-key sk-ant-... \
-         --base-url ...    # only for openai-compatible / azure / ollama
+CHRONIKL_PROVIDER=anthropic \
+CHRONIKL_MODEL=claude-haiku-5-5 \
+CHRONIKL_API_KEY=sk-ant-... \
+chronikl
+# CHRONIKL_BASE_URL=... only for openai-compatible / azure / ollama
 ```
 
 ## Exit codes

@@ -28,9 +28,9 @@ the configured voice.
 | `enrichment/` | `PrEnricher` trait + GitHub (octocrab) impl + no-op fallback |
 | `ladder/` | Tier 0 (deterministic) → 1 (batched LLM) → 2 (per-commit + diff) → 3 (agentic, opt-in) |
 | `prose/` | Final prose pass: voice + section assembly |
-| `voice/` | Voice file loading (frontmatter+body); bundled default via `include_str!` |
+| `voice/` | Voice file loading (frontmatter render defaults + body); bundled `terse`, `prose`, `simple` via `include_str!` |
 | `providers/` | `NotesProvider` trait + rig-core multi-provider impl |
-| `output/` | Markdown rendering, optional changelog prepend |
+| `output/` | Deterministic Markdown rendering; shaping to the render settings (flat lists, plain text, limits, footer) |
 | `cache/` | SHA-keyed disk cache for classifications |
 | `update/` | Self-update from GitHub releases (ported from nitpik) |
 | `models/` | `Commit`, `EnrichedCommit`, `Classification`, `Section`, `Release` |

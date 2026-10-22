@@ -24,12 +24,32 @@ You're using anonymous GitHub API access. Fine for small repos; on larger ones y
 
 ## All commits land in "Other"
 
-This means Tier 0 didn't recognise any Conventional Commits prefixes and Tier 1+ is either disabled (`--no-llm`) or the LLM didn't engage. Check:
+This means Tier 0 didn't recognise any Conventional Commits prefixes and Tier 1+ is either disabled (`--no-llm`) or the LLM didn't engage. Subjects written as `Area: text` (`Map: …`, `Web: …`) aren't Conventional types chronikl knows, so they go to Tier 1 like free-form subjects; without an LLM they stay in "Other". Check:
 
 - Is `CHRONIKL_PROVIDER` + API key set?
 - Is `--no-llm` accidentally set?
 - Run `chronikl debug classify` to see Tier 0 results
 - Run `chronikl debug prompts` to see what would be sent if the LLM ran
+
+## User-facing changes filed under Documentation or Tests
+
+The classifiers decide by what a change does for users, not by which files it touched: a feature that also adds tests or docs is a feature, and product copy (UI text, a website's FAQ) isn't documentation. A `tests` or `documentation` verdict for a commit that also changes product files is turned into `other`. If a commit still lands in the wrong section, check what the message says it does: the classifier reads the subject and body. `chronikl debug prompts` shows the Tier 1 input, files listed product-first with a count by kind.
+
+Repos that pin `confidence_threshold = 0.0` in `[ladder]` never send commits to Tier 2 (the per-commit, diff-aware pass), so Tier 1's call is final.
+
+## "temperature is deprecated for this model" / "Unsupported parameter: 'max_tokens'"
+
+Some models reject chronikl's default request parameters: Anthropic's Claude 5.5 models refuse `temperature`, and OpenAI's GPT-5 family on Chat Completions wants `max_completion_tokens` instead of `max_tokens` (its reasoning models also refuse `temperature`). chronikl handles this itself. You'll see a warning such as:
+
+```
+warn: model `claude-haiku-5-5` rejected `temperature`; retrying without `temperature` for the rest of this run
+```
+
+That call is retried once with the parameter changed, and later calls start that way. The audit log marks the call (`param_fallbacks`). To skip the first rejected call, set `CHRONIKL_TEMPERATURE=none` (or `[provider] temperature = "none"`).
+
+## "warn: Tier 1 returned no verdict for N of M commit(s); asking again for those"
+
+The model answered a batch with verdicts for only some of its commits; this happens now and then with models that run at their default temperature. chronikl sends the missing commits once more in their own batch. If it happens on every run, lower `[ladder] batch_size`.
 
 ## "LLM API error: HTTP 429 Too Many Requests"
 
@@ -44,7 +64,32 @@ The model returned malformed structured output. chronikl already tolerates markd
 
 ## "warn: prose pass failed; falling back to deterministic render: …"
 
-The prose pass errored (rate limit, timeout, model issue). The deterministic Tier 0 → Markdown render kicks in so you still get notes — they just won't have the voice applied. Re-run later, or use `chronikl debug prompts` to inspect what was about to be sent.
+The prose pass errored (rate limit, timeout, model issue). The deterministic Tier 0 → Markdown render kicks in so you still get notes — they just won't have the voice applied. For user-facing notes (`--voice simple`, or `user_facing = true`) the fallback is one line such as "Bug fixes and stability improvements." instead of raw commit subjects. Re-run later, or use `chronikl debug prompts` to inspect what was about to be sent.
+
+## How do I tell model-written notes from the fallback in CI?
+
+Read `notes_source.kind` from the audit log (`--audit-log`):
+
+| `kind` | Meaning |
+|---|---|
+| `model` | The prose pass wrote the notes. |
+| `fallback` | The model was wanted but failed or no provider was usable (`reason` says which); the deterministic renderer or the fallback line wrote the notes. |
+| `deterministic` | `--no-llm`, or no commits for the model to describe. |
+| `nothing_user_facing` | User-facing notes with nothing user-facing in the range; the fallback line for `fallback` (`fixes`, `performance` or `other`) was written. |
+
+Or run with `--strict`: then a `fallback` run exits 1 and writes nothing.
+
+## "strict mode: the notes would have fallen back to the deterministic renderer (…); nothing was written"
+
+`--strict` (or `CHRONIKL_STRICT=true`, `[output] strict = true`) is on and the LLM pipeline couldn't write the notes: the reason in parentheses says why (no provider or key, an unusable provider, a failed prose pass). stdout and `--output` stay empty; `--audit-log` is still written. Fix the provider, or drop `--strict` to publish the deterministic notes.
+
+## The notes say only "Small improvements behind the scenes."
+
+That's the fallback line of user-facing notes: nothing in the range is something a user would notice (every commit was in an excluded section, or the model said so). The line depends on what the commits were (fixes, performance, anything else) and can be changed with `fallback_line`, `fallback_fixes`, `fallback_performance` and `fallback_other` (see [Configuration](05-Configuration#user-facing-notes)).
+
+## "invalid frontmatter in voice …"
+
+The `---` block at the top of a voice file has a key chronikl doesn't know, a value of the wrong type, or a line that isn't `key: value`. The keys are the `[render]` keys (see [Voice](06-Voice#frontmatter)). `chronikl validate <FILE>` shows the error.
 
 ## "permission denied replacing /usr/local/bin/chronikl"
 
