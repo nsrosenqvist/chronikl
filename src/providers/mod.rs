@@ -8,6 +8,7 @@
 //! own the schema and parsing of structured output.
 
 pub mod agent_loop;
+pub mod compat;
 pub mod mock;
 pub mod response;
 pub mod rig;

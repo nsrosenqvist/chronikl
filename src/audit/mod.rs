@@ -121,6 +121,12 @@ pub struct LlmCallAudit {
     /// tool-using loop (Tier 3). `None` for single-turn calls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<AgentDiagnostics>,
+    /// Request parameters the model rejected on this call, which
+    /// chronikl then changed and retried (e.g. `temperature` left out,
+    /// `max_tokens` sent as `max_completion_tokens`). Later calls in the
+    /// run use the changed parameters from the start.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub param_fallbacks: Vec<String>,
 }
 
 /// Per-run diagnostics for a multi-turn agent loop. Captures the loop's
@@ -419,6 +425,7 @@ mod tests {
             commit_shas: vec!["abc".into()],
             retries: 0,
             agent: None,
+            param_fallbacks: Vec::new(),
         }
     }
 }

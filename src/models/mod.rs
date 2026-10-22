@@ -9,6 +9,7 @@
 mod classification;
 mod pr;
 mod release;
+mod temperature;
 mod tokens;
 
 pub use classification::{
@@ -40,6 +41,7 @@ impl EnrichedCommit {
     }
 }
 pub use release::{ParsedVersion, ReleaseKind, VersionBump, VersionScheme};
+pub use temperature::{ParseTemperatureError, Temperature};
 pub use tokens::TokenUsage;
 
 use serde::{Deserialize, Serialize};

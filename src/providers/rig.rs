@@ -17,9 +17,12 @@ use rig::tool::ToolDyn;
 
 use crate::audit::{AuditSink, CallStatus, LlmCallAudit, hash_hex, now_unix_ms};
 use crate::config::ProviderConfig;
-use crate::constants::{ENV_API_KEY, GITHUB_MODELS_BASE_URL, MAX_RETRIES};
-use crate::models::TokenUsage;
+use crate::constants::{DEFAULT_TEMPERATURE, ENV_API_KEY, GITHUB_MODELS_BASE_URL, MAX_RETRIES};
+use crate::models::{Temperature, TokenUsage};
 use crate::providers::agent_loop::{LoopConfig, LoopOutcome, run_agent_loop};
+use crate::providers::compat::{
+    Adapted, CallParams, ParamCompat, Rejected, apply_params, call_adapting,
+};
 use crate::providers::response::{is_retryable, retry_backoff};
 use crate::providers::{
     CompletionRequest, CompletionResponse, NotesProvider, ProviderError, ProviderName,
@@ -29,6 +32,7 @@ use crate::providers::{
 /// When `Some`, the matrix dispatches via [`run_agent_loop`] with the
 /// supplied tools instead of issuing a one-shot completion.
 struct AgenticArgs<'a> {
+    compat: &'a ParamCompat,
     tools: Vec<Arc<dyn ToolDyn>>,
     max_turns: u32,
     terminal_tool: Option<&'a str>,
@@ -40,6 +44,9 @@ struct CallArgs<'a> {
     request: &'a CompletionRequest<'a>,
     /// `Some` for Tier 3 agentic calls; `None` for everything else.
     agentic: Option<AgenticArgs<'a>>,
+    /// Request parameters for a one-shot completion (the agent loop
+    /// reads them per turn from [`AgenticArgs::compat`]).
+    params: CallParams,
 }
 
 /// Output of a single dispatch — either a one-shot completion or the
@@ -60,6 +67,9 @@ pub struct RigProvider {
     name: ProviderName,
     model_id: String,
     audit_sink: Option<AuditSink>,
+    /// Temperature / token-cap parameters, adapted when the model
+    /// rejects one of them.
+    compat: ParamCompat,
 }
 
 impl RigProvider {
@@ -79,11 +89,17 @@ impl RigProvider {
                  provider-specific env var."
             )));
         }
+        let temperature = config
+            .temperature
+            .unwrap_or(Temperature::Value(DEFAULT_TEMPERATURE))
+            .as_option();
+        let compat = ParamCompat::new(model_id.clone(), temperature);
         Ok(Self {
             config,
             name,
             model_id,
             audit_sink: None,
+            compat,
         })
     }
 
@@ -126,21 +142,30 @@ impl RigProvider {
         loop {
             let started_at = now_unix_ms();
             let started_instant = std::time::Instant::now();
-            let outcome = self
-                .call(CallArgs {
+            let Adapted { result, adapted } = call_adapting(&self.compat, move |params| {
+                self.call(CallArgs {
                     request,
                     agentic: None,
+                    params,
                 })
-                .await
-                .and_then(|r| match r {
-                    CallResult::Completion(c) => Ok(c),
-                    CallResult::Agent(_) => Err(ProviderError::Api(
-                        "internal: agent result returned for non-agentic dispatch".into(),
-                    )),
-                });
+            })
+            .await;
+            let outcome = result.and_then(|r| match r {
+                CallResult::Completion(c) => Ok(c),
+                CallResult::Agent(_) => Err(ProviderError::Api(
+                    "internal: agent result returned for non-agentic dispatch".into(),
+                )),
+            });
             let duration_ms = started_instant.elapsed().as_millis() as u64;
 
-            self.record_audit(request, &outcome, started_at, duration_ms, attempt as usize);
+            self.record_audit(
+                request,
+                &outcome,
+                started_at,
+                duration_ms,
+                attempt as usize,
+                &adapted,
+            );
 
             match outcome {
                 Ok(response) => return Ok(response),
@@ -161,6 +186,7 @@ impl RigProvider {
         started_at: u64,
         duration_ms: u64,
         retries: usize,
+        adapted: &[Rejected],
     ) {
         let Some(sink) = &self.audit_sink else {
             return;
@@ -192,6 +218,7 @@ impl RigProvider {
             commit_shas: request.commit_shas.to_vec(),
             retries,
             agent: None,
+            param_fallbacks: adapted.iter().map(|r| r.as_str().to_string()).collect(),
         });
     }
 
@@ -386,6 +413,7 @@ impl RigProvider {
             commit_shas: &[],
         };
         let agentic = AgenticArgs {
+            compat: &self.compat,
             tools,
             max_turns,
             terminal_tool,
@@ -395,6 +423,7 @@ impl RigProvider {
             .call(CallArgs {
                 request: &request,
                 agentic: Some(agentic),
+                params: self.compat.params(),
             })
             .await?
         {
@@ -453,6 +482,7 @@ impl RigProvider {
             commit_shas,
             retries: 0,
             agent,
+            param_fallbacks: Vec::new(),
         });
     }
 }
@@ -536,7 +566,11 @@ async fn dispatch_call<M>(model: M, args: CallArgs<'_>) -> Result<CallResult, Pr
 where
     M: CompletionModel + 'static,
 {
-    let CallArgs { request, agentic } = args;
+    let CallArgs {
+        request,
+        agentic,
+        params,
+    } = args;
 
     if let Some(agent) = agentic {
         let mut loop_cfg = LoopConfig::new(
@@ -555,16 +589,19 @@ where
             request.user_prompt.to_string(),
             agent.tools,
             loop_cfg,
+            agent.compat,
         )
         .await?;
         return Ok(CallResult::Agent(outcome));
     }
 
-    let mut req = model
-        .completion_request(request.user_prompt.to_string())
-        .preamble(request.system_prompt.to_string())
-        .temperature(0.0)
-        .max_tokens(request.max_tokens);
+    let mut req = apply_params(
+        model
+            .completion_request(request.user_prompt.to_string())
+            .preamble(request.system_prompt.to_string()),
+        params,
+        request.max_tokens,
+    );
 
     // Try to attach the schema. rig-core's `output_schema` takes a
     // `schemars::Schema`, and serde_json::Value → Schema via deserialize
@@ -621,6 +658,7 @@ mod tests {
             model: Some("claude-haiku-4-5".into()),
             api_key: None,
             base_url: None,
+            temperature: None,
         };
         let err = RigProvider::new(config).unwrap_err();
         assert!(matches!(err, ProviderError::NotConfigured(_)));
@@ -633,6 +671,7 @@ mod tests {
             model: None,
             api_key: Some("sk".into()),
             base_url: None,
+            temperature: None,
         };
         let err = RigProvider::new(config).unwrap_err();
         assert!(matches!(err, ProviderError::NotConfigured(_)));
@@ -645,6 +684,7 @@ mod tests {
             model: Some("x".into()),
             api_key: Some("sk".into()),
             base_url: None,
+            temperature: None,
         };
         let err = RigProvider::new(config).unwrap_err();
         assert!(matches!(err, ProviderError::NotConfigured(_)));
@@ -657,6 +697,7 @@ mod tests {
             model: Some("llama3".into()),
             api_key: None,
             base_url: Some("http://localhost:11434".into()),
+            temperature: None,
         };
         assert!(RigProvider::new(config).is_ok());
     }
@@ -668,6 +709,7 @@ mod tests {
             model: Some("custom".into()),
             api_key: Some("k".into()),
             base_url: None,
+            temperature: None,
         };
         let p = RigProvider::new(config).unwrap();
         assert!(p.require_base_url().is_err());
@@ -680,6 +722,7 @@ mod tests {
             model: Some("custom".into()),
             api_key: Some("k".into()),
             base_url: Some("https://api.example.com".into()),
+            temperature: None,
         };
         let p = RigProvider::new(config).unwrap();
         assert_eq!(p.require_base_url().unwrap(), "https://api.example.com");

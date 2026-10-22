@@ -15,9 +15,10 @@ use thiserror::Error;
 
 use crate::constants::{
     CONFIG_DIR, CONFIG_FILENAME, DEFAULT_BATCH_SIZE, DEFAULT_CONFIDENCE_THRESHOLD,
-    DEFAULT_MAX_DIFF_TOKENS, ENV_API_KEY, ENV_BASE_URL, ENV_MODEL, ENV_PROVIDER,
+    DEFAULT_MAX_DIFF_TOKENS, ENV_API_KEY, ENV_BASE_URL, ENV_MODEL, ENV_PROVIDER, ENV_TEMPERATURE,
 };
 use crate::env::Env;
+use crate::models::Temperature;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -94,6 +95,9 @@ pub struct ProviderConfig {
     /// so tests/mocks can supply one programmatically.
     pub api_key: Option<String>,
     pub base_url: Option<String>,
+    /// Sampling temperature: a number, or `"none"` to send none. Unset
+    /// sends [`crate::constants::DEFAULT_TEMPERATURE`].
+    pub temperature: Option<Temperature>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -169,6 +173,18 @@ impl Config {
         if let Ok(v) = env.var(ENV_BASE_URL) {
             self.provider.base_url = Some(v);
         }
+        if let Some(v) = env
+            .var(ENV_TEMPERATURE)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+        {
+            self.provider.temperature = Some(v.parse().map_err(
+                |e: crate::models::ParseTemperatureError| ConfigError::InvalidValue {
+                    key: ENV_TEMPERATURE.to_string(),
+                    message: e.to_string(),
+                },
+            )?);
+        }
 
         // API key: chronikl-specific first, then provider-specific fallbacks.
         if let Ok(v) = env.var(ENV_API_KEY) {
@@ -180,6 +196,16 @@ impl Config {
         }
 
         Ok(())
+    }
+}
+
+impl Config {
+    /// The temperature to send, or `None` to leave it out.
+    pub fn temperature(&self) -> Option<f64> {
+        self.provider
+            .temperature
+            .unwrap_or(Temperature::Value(crate::constants::DEFAULT_TEMPERATURE))
+            .as_option()
     }
 }
 
@@ -250,6 +276,9 @@ fn merge(mut base: Config, next: Config) -> Config {
     }
     if next.provider.base_url.is_some() {
         base.provider.base_url = next.provider.base_url;
+    }
+    if next.provider.temperature.is_some() {
+        base.provider.temperature = next.provider.temperature;
     }
     // Ladder: TOML provides full struct via #[serde(default)], so we treat
     // any deserialized non-default values as overrides. Simpler to compare
@@ -421,5 +450,27 @@ model = "claude-sonnet-4-6"
         let env = Env::mock(Vec::<(&str, &str)>::new());
         let err = Config::load(&env, dir.path(), None).unwrap_err();
         assert!(matches!(err, ConfigError::Toml { .. }));
+    }
+
+    #[test]
+    fn temperature_defaults_to_zero_and_layers() {
+        assert_eq!(Config::default().temperature(), Some(0.0));
+        let dir = tempfile::tempdir().unwrap();
+        write_toml(
+            dir.path(),
+            CONFIG_FILENAME,
+            "[provider]\ntemperature = 0.3\n",
+        );
+        let env = Env::mock(Vec::<(&str, &str)>::new());
+        let cfg = Config::load(&env, dir.path(), None).unwrap();
+        assert_eq!(cfg.temperature(), Some(0.3));
+        let env = Env::mock([(ENV_TEMPERATURE, "none")]);
+        let cfg = Config::load(&env, dir.path(), None).unwrap();
+        assert_eq!(cfg.temperature(), None);
+        let env = Env::mock([(ENV_TEMPERATURE, "hot")]);
+        assert!(matches!(
+            Config::load(&env, dir.path(), None),
+            Err(ConfigError::InvalidValue { .. })
+        ));
     }
 }

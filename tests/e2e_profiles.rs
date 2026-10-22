@@ -55,6 +55,7 @@ fn e2e_provider() -> Option<ProviderConfig> {
             model,
             api_key: Some(key),
             base_url: std::env::var("CHRONIKL_BASE_URL").ok(),
+            temperature: None,
         });
     }
     for (env_var, provider) in [
@@ -68,6 +69,7 @@ fn e2e_provider() -> Option<ProviderConfig> {
                 model: Some(default_model(provider).expect("known provider has default model")),
                 api_key: Some(key),
                 base_url: None,
+                temperature: None,
             });
         }
     }

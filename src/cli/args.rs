@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 use crate::constants::FULL_VERSION;
+use crate::models::Temperature;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -102,6 +103,12 @@ pub struct GenerateArgs {
     /// hash, response hash, commits covered) to this path. Opt-in.
     #[arg(long, value_name = "FILE", env = "CHRONIKL_AUDIT_LOG")]
     pub audit_log: Option<PathBuf>,
+
+    /// Sampling temperature for every LLM call: a number (0 to 2), or
+    /// `none` to send no temperature at all. Defaults to 0. A model
+    /// that rejects the parameter gets the call retried without it.
+    #[arg(long, value_name = "N|none")]
+    pub temperature: Option<Temperature>,
 }
 
 #[derive(Subcommand, Debug)]

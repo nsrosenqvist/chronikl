@@ -123,7 +123,11 @@ async fn generate(args: GenerateArgs) -> anyhow::Result<()> {
         .unwrap_or_else(|| std::env::current_dir().expect("cwd available"));
     let env = Env::real();
     let home = dirs::config_dir();
-    let cfg = Config::load(&env, &repo, home.as_deref())?;
+    let mut cfg = Config::load(&env, &repo, home.as_deref())?;
+    // CLI flags sit on top of env and TOML.
+    if args.temperature.is_some() {
+        cfg.provider.temperature = args.temperature;
+    }
 
     let spec = args.range.to_spec();
     let range = git::resolve_range(&repo, &spec).await?;

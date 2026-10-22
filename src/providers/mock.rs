@@ -208,6 +208,7 @@ impl NotesProvider for MockProvider {
                 commit_shas: request.commit_shas.to_vec(),
                 retries: 0,
                 agent: None,
+                param_fallbacks: Vec::new(),
             });
         }
 

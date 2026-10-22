@@ -76,6 +76,7 @@ pub const ENV_PROVIDER: &str = "CHRONIKL_PROVIDER";
 pub const ENV_MODEL: &str = "CHRONIKL_MODEL";
 pub const ENV_API_KEY: &str = "CHRONIKL_API_KEY";
 pub const ENV_BASE_URL: &str = "CHRONIKL_BASE_URL";
+pub const ENV_TEMPERATURE: &str = "CHRONIKL_TEMPERATURE";
 
 /// GitHub API token env vars, in lookup order.
 ///
@@ -142,6 +143,12 @@ pub const DEFAULT_BATCH_SIZE: usize = 50;
 /// Tier 2 confidence threshold: commits below this score get re-classified
 /// with their diff included.
 pub const DEFAULT_CONFIDENCE_THRESHOLD: f32 = 0.6;
+
+/// Sampling temperature sent with every LLM call unless configured
+/// otherwise. Zero keeps classification and prose as repeatable as the
+/// model allows. Models that reject the parameter get the call retried
+/// once without it (see `providers::compat`).
+pub const DEFAULT_TEMPERATURE: f64 = 0.0;
 
 /// Tier 2 maximum diff tokens per commit before truncation.
 pub const DEFAULT_MAX_DIFF_TOKENS: usize = 4000;

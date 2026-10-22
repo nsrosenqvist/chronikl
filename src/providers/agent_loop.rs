@@ -19,6 +19,7 @@ use rig::tool::ToolDyn;
 
 use crate::audit::{AgentDiagnostics, ToolCallRecord, hash_hex};
 use crate::providers::ProviderError;
+use crate::providers::compat::{ParamCompat, apply_params, call_adapting};
 
 /// Successful agent-loop outcome.
 #[derive(Debug, Clone)]
@@ -92,11 +93,16 @@ impl LoopConfig {
 }
 
 /// Drive a model through tool-calling turns until termination.
+///
+/// `compat` carries the run's request parameters; a turn the model
+/// rejects for `temperature` or `max_tokens` is retried with them
+/// adjusted (see [`crate::providers::compat`]).
 pub async fn run_agent_loop<M>(
     model: M,
     user_prompt: String,
     tools: Vec<Arc<dyn ToolDyn>>,
     config: LoopConfig,
+    compat: &ParamCompat,
 ) -> Result<LoopOutcome, ProviderError>
 where
     M: CompletionModel + 'static,
@@ -127,18 +133,22 @@ where
             .expect("history always has the initial user prompt");
         let prior = &history[..history.len() - 1];
 
-        let resp = model
-            .completion_request(prompt_msg)
-            .preamble(config.preamble.clone())
-            .messages(prior.iter().cloned())
-            .max_tokens(config.max_tokens)
-            .temperature(0.0)
-            .tools(tool_defs.clone())
-            .send()
-            .await
-            .map_err(|e| {
-                ProviderError::Api(format!("completion failed on turn {}: {e}", turns + 1))
-            })?;
+        let turn = turns + 1;
+        let resp = call_adapting(compat, |params| {
+            let builder = model
+                .completion_request(prompt_msg.clone())
+                .preamble(config.preamble.clone())
+                .messages(prior.iter().cloned())
+                .tools(tool_defs.clone());
+            let builder = apply_params(builder, params, config.max_tokens);
+            async move {
+                builder.send().await.map_err(|e| {
+                    ProviderError::Api(format!("completion failed on turn {turn}: {e}"))
+                })
+            }
+        })
+        .await
+        .result?;
 
         usage += resp.usage;
         turns += 1;
